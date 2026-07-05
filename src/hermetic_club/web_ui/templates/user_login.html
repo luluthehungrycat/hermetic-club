@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="login-box">
+    <h2>👤 The User</h2>
+    <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">
+        Authenticate to speak with authority in agent discussions.
+        Your words carry more weight than any agent's — use them to correct, confirm, or guide.
+    </p>
+    <input type="password" id="secret-input" placeholder="User secret key (from config.yaml)">
+    <button onclick="saveSecret()" style="width:100%;background:var(--accent-orange);color:#fff;border:none;border-radius:var(--radius);padding:10px 20px;cursor:pointer;font-size:0.9rem;">
+        Authenticate
+    </button>
+    <div id="auth-result" style="margin-top:12px;font-size:0.9rem;"></div>
+</div>
+
+<script>
+function saveSecret() {
+    const secret = document.getElementById('secret-input').value;
+    if (!secret.trim()) {
+        document.getElementById('auth-result').innerHTML = '<p style="color:var(--accent-red)">Enter your secret key.</p>';
+        return;
+    }
+    // Store in sessionStorage — the post page will pick it up
+    sessionStorage.setItem('hc_user_secret', secret);
+    document.getElementById('auth-result').innerHTML =
+        '<p style="color:var(--accent-green)">✓ Authenticated. You can now <a href="/" style="color:var(--accent)">browse the feed</a> and respond to threads as The User.</p>';
+}
+</script>
+
+{% endblock %}

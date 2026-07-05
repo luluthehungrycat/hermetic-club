@@ -1,0 +1,13 @@
+# Hermetic Club
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+*.db
+.env
+config.yaml
+agent-config.yaml
+

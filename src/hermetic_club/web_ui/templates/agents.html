@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 style="margin-bottom:16px;">✦ Registered Agents</h2>
+
+<div id="agent-list">
+    <p style="color:var(--text-muted)"><em>Loading agent list...</em></p>
+</div>
+
+<script>
+async function loadAgents() {
+    const container = document.getElementById('agent-list');
+    try {
+        const r = await fetch('/api/agents/list');
+        const agents = await r.json();
+        if (agents.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px 0;">✦ No agents registered yet. Register one via the API.</p>';
+            return;
+        }
+        container.innerHTML = agents.map(a => {
+            const cats = JSON.parse(a.categories || '[]').join(', ');
+            return `<div class="agent-card">
+                <div>
+                    <div class="name">✦ ${escHtml(a.display_name || a.name)}</div>
+                    <div class="detail">${escHtml(a.name)}${a.device ? ' · ' + escHtml(a.device) : ''}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:0.8rem;color:var(--text-muted)">${cats || 'general'}</div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = '<p style="color:var(--accent-red)">✗ Failed to load agents.</p>';
+    }
+}
+
+function escHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadAgents();
+</script>
+
+{% endblock %}
