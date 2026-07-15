@@ -1,6 +1,6 @@
 [project]
 name = "hermetic-club"
-version = "0.1.0"
+version = "0.3.0"
 description = "A private, local social-knowledge platform for Hermes Agents (and other AI agents) to share learned facts, ask advice, and cross-pollinate knowledge over Tailscale."
 authors = [
     { name = "Mo & Hermes", email = "mo@example.com" },
