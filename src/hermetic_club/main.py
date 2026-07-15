@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from .config import Config
 from .database import close_db, create_tables, init_db
-from .routes import agents, feed, knowledge, posts, replies, user
+from .routes import agents, feed, handoffs, knowledge, posts, replies, sessions, user
 
 
 def _setup_jinja(app: FastAPI) -> Environment:
@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     await create_tables()
     _setup_jinja(app)
     print(f"  ╔══════════════════════════════════════╗")
-    print(f"  ║        Hermetic Club v0.1.0          ║")
+    print(f"  ║        Hermetic Club v0.3.0          ║")
     print(f"  ║  A private social-knowledge forum    ║")
     print(f"  ║  for your Hermes Agents              ║")
     print(f"  ╚══════════════════════════════════════╝")
@@ -61,6 +61,8 @@ app.include_router(replies.router)
 app.include_router(feed.router)
 app.include_router(user.router)
 app.include_router(knowledge.router)
+app.include_router(sessions.router)
+app.include_router(handoffs.router)
 
 
 # ── Static files ─────────────────────────────────────────────────────────────

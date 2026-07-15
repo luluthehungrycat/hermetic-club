@@ -1,4 +1,7 @@
-"""Rate limiting service — enforces per-agent daily budgets and per-thread caps."""
+"""Rate limiting service — enforces per-agent daily budgets and per-thread caps.
+
+All daily counters reset on first use each UTC day.
+"""
 
 from __future__ import annotations
 
@@ -16,50 +19,53 @@ class RateLimitError(Exception):
         super().__init__(message)
 
 
+async def _maybe_reset(agent: Agent) -> None:
+    """Reset daily counters if the UTC date has rolled over."""
+    today = date.today().isoformat()
+    if agent.last_reset_date != today:
+        agent.post_count_today = 0
+        agent.reply_count_today = 0
+        agent.session_count_today = 0
+        agent.handoff_count_today = 0
+        agent.last_reset_date = today
+
+
+# ── Checks ───────────────────────────────────────────────────────────────────
+
+
 async def check_post_limit(session: AsyncSession, agent_id: str) -> None:
     """Raise RateLimitError if agent has used its daily post budget."""
     agent = await session.get(Agent, agent_id)
     if not agent:
         raise RateLimitError("Unknown agent")
 
-    today = date.today().isoformat()
-    if agent.last_reset_date != today:
-        agent.post_count_today = 0
-        agent.reply_count_today = 0
-        agent.last_reset_date = today
-        await session.commit()
+    await _maybe_reset(agent)
 
     if agent.post_count_today >= agent.daily_post_limit:
         raise RateLimitError(
             f"Daily post limit reached ({agent.daily_post_limit}/day). "
             f"Resets at midnight UTC.",
-            reset_at=today,
+            reset_at=date.today().isoformat(),
         )
 
 
 async def check_reply_limit(
     session: AsyncSession, agent_id: str, post_id: str | None = None
 ) -> None:
-    """Raise RateLimitError if agent has used its daily reply budget."""
+    """Raise RateLimitError if agent has used its daily reply budget or per-thread cap."""
     agent = await session.get(Agent, agent_id)
     if not agent:
         raise RateLimitError("Unknown agent")
 
-    today = date.today().isoformat()
-    if agent.last_reset_date != today:
-        agent.post_count_today = 0
-        agent.reply_count_today = 0
-        agent.last_reset_date = today
-        await session.commit()
+    await _maybe_reset(agent)
 
     if agent.reply_count_today >= agent.daily_reply_limit:
         raise RateLimitError(
             f"Daily reply limit reached ({agent.daily_reply_limit}/day). "
             f"Resets at midnight UTC.",
-            reset_at=today,
+            reset_at=date.today().isoformat(),
         )
 
-    # Per-thread limit
     if post_id:
         from sqlalchemy import func
 
@@ -72,10 +78,45 @@ async def check_reply_limit(
             )
         )
         thread_count = result.scalar() or 0
-        if thread_count >= 5:  # hardcoded per-thread cap
+        if thread_count >= 5:
             raise RateLimitError(
                 "Per-thread reply limit reached (max 5 replies per agent per thread)."
             )
+
+
+async def check_session_limit(session: AsyncSession, agent_id: str) -> None:
+    """Raise RateLimitError if agent has used its daily session report budget."""
+    agent = await session.get(Agent, agent_id)
+    if not agent:
+        raise RateLimitError("Unknown agent")
+
+    await _maybe_reset(agent)
+
+    if agent.session_count_today >= agent.daily_session_limit:
+        raise RateLimitError(
+            f"Daily session report limit reached ({agent.daily_session_limit}/day). "
+            f"Resets at midnight UTC.",
+            reset_at=date.today().isoformat(),
+        )
+
+
+async def check_handoff_limit(session: AsyncSession, agent_id: str) -> None:
+    """Raise RateLimitError if agent has used its daily handoff budget."""
+    agent = await session.get(Agent, agent_id)
+    if not agent:
+        raise RateLimitError("Unknown agent")
+
+    await _maybe_reset(agent)
+
+    if agent.handoff_count_today >= agent.daily_handoff_limit:
+        raise RateLimitError(
+            f"Daily handoff limit reached ({agent.daily_handoff_limit}/day). "
+            f"Resets at midnight UTC.",
+            reset_at=date.today().isoformat(),
+        )
+
+
+# ── Incrementers ─────────────────────────────────────────────────────────────
 
 
 async def increment_post_count(session: AsyncSession, agent_id: str) -> None:
@@ -84,7 +125,6 @@ async def increment_post_count(session: AsyncSession, agent_id: str) -> None:
         .where(Agent.id == agent_id)
         .values(post_count_today=Agent.post_count_today + 1)
     )
-    await session.commit()
 
 
 async def increment_reply_count(session: AsyncSession, agent_id: str) -> None:
@@ -93,4 +133,19 @@ async def increment_reply_count(session: AsyncSession, agent_id: str) -> None:
         .where(Agent.id == agent_id)
         .values(reply_count_today=Agent.reply_count_today + 1)
     )
-    await session.commit()
+
+
+async def increment_session_count(session: AsyncSession, agent_id: str) -> None:
+    await session.execute(
+        update(Agent)
+        .where(Agent.id == agent_id)
+        .values(session_count_today=Agent.session_count_today + 1)
+    )
+
+
+async def increment_handoff_count(session: AsyncSession, agent_id: str) -> None:
+    await session.execute(
+        update(Agent)
+        .where(Agent.id == agent_id)
+        .values(handoff_count_today=Agent.handoff_count_today + 1)
+    )

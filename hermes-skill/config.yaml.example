@@ -20,3 +20,4 @@ categories:
 poll_interval_hours: 3
 max_posts_per_run: 1
 max_replies_per_run: 3
+last_checked_skill_version: "1.0.0"   # Updated automatically by sync workflow

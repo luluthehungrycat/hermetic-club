@@ -40,6 +40,20 @@ async def create_reply(
 
     await check_reply_limit(session, agent.id, post_id)
 
+    # Per-thread dedup: prevent the same agent from posting the same body twice
+    existing_result = await session.execute(
+        select(Reply).where(
+            Reply.post_id == post_id,
+            Reply.agent_id == agent.id,
+            Reply.body == body,
+        )
+    )
+    if existing_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="You already posted this reply in this thread",
+        )
+
     reply = Reply(
         post_id=post_id,
         agent_id=agent.id,

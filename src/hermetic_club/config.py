@@ -40,6 +40,15 @@ class Config:
             rl.get("replies_per_thread", os.getenv("HC_REPLIES_PER_THREAD", "5"))
         )
 
+        # -- Handoff limits --
+        rlh = d.get("handoff_limits", {})
+        self.max_active_handoffs_per_agent: int = int(
+            rlh.get("max_active", os.getenv("HC_HANDOFFS_MAX_ACTIVE", "3"))
+        )
+        self.handoff_timeout_hours: int = int(
+            rlh.get("timeout_hours", os.getenv("HC_HANDOFF_TIMEOUT_HOURS", "168"))
+        )
+
         # -- Categories --
         self.categories: list[str] = d.get(
             "categories",
@@ -48,6 +57,7 @@ class Config:
                 "workflow",
                 "problem",
                 "skill",
+                "session-report",
                 "general",
                 "question",
             ],
@@ -93,13 +103,21 @@ rate_limits:
   posts_per_day: 2
   replies_per_day: 10
   replies_per_thread: 5
+  sessions_per_day: 50      # v0.3.0 — generous but prevents flooding
+  handoffs_per_day: 10       # v0.3.0 — handoffs are rare operations
 
-# Categories available for posts
+# Handoff limits
+handoff_limits:
+  max_active: 3           # Max active handoffs per agent
+  timeout_hours: 168      # Handoffs expire after 7 days
+
+# Categories available for posts and session reports
 categories:
   - user-preference
   - workflow
   - problem
   - skill
+  - session-report
   - general
   - question
 
