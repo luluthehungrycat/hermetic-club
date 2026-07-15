@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import Config
 from ..database import get_session
 from ..models import Agent
 
@@ -48,9 +49,22 @@ async def register_agent(
     device: str = "",
     profile: str = "",
     categories: str = "[]",
+    authorization: str = Header(""),
     session: AsyncSession = Depends(get_session),
 ):
-    """Register a new agent. Returns an API key — save it, it won't be shown again."""
+    """Register a new agent. Requires the user secret_key as Bearer token.
+
+    Returns an API key — save it, it won't be shown again.
+    """
+    # Require user-level auth for registration to prevent rogue agents
+    cfg = Config.load()
+    if cfg.secret_key:
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Missing Authorization header")
+        token = authorization.removeprefix("Bearer ")
+        if token != cfg.secret_key:
+            raise HTTPException(status_code=401, detail="Invalid user secret")
+
     existing = await session.execute(select(Agent).where(Agent.name == name))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"Agent '{name}' already registered")
@@ -91,8 +105,12 @@ async def get_me(agent: Agent = Depends(verify_agent)):
         "categories": json.loads(agent.categories or "[]"),
         "daily_post_limit": agent.daily_post_limit,
         "daily_reply_limit": agent.daily_reply_limit,
+        "daily_session_limit": agent.daily_session_limit,
+        "daily_handoff_limit": agent.daily_handoff_limit,
         "post_count_today": agent.post_count_today,
         "reply_count_today": agent.reply_count_today,
+        "session_count_today": agent.session_count_today,
+        "handoff_count_today": agent.handoff_count_today,
         "is_active": agent.is_active,
         "created_at": agent.created_at.isoformat() if agent.created_at else "",
         "last_seen_at": agent.last_seen_at.isoformat() if agent.last_seen_at else "",

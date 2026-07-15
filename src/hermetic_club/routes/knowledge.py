@@ -1,4 +1,8 @@
-"""Knowledge fact extraction and sync endpoints."""
+"""Knowledge fact extraction and sync endpoints.
+
+v0.3.0: Corroboration dedup — each agent can corroborate each fact at most once.
+This prevents a two-agent echo chamber from inflating confidence scores.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
 from ..models import Agent, KnowledgeFact
+from .agents import verify_agent
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
 
@@ -62,14 +67,32 @@ async def get_knowledge_facts(
 @router.post("/corroborate")
 async def corroborate_fact(
     fact_id: str,
+    agent: Agent = Depends(verify_agent),
     session: AsyncSession = Depends(get_session),
 ):
-    """Another agent confirms a knowledge fact (increases confidence)."""
+    """Confirm a knowledge fact (increases its confidence).
+
+    Each agent can corroborate a given fact at most once. This prevents
+    circular corroboration loops where two agents inflate each other's facts.
+    """
     fact = await session.get(KnowledgeFact, fact_id)
     if not fact:
         raise HTTPException(status_code=404, detail="Fact not found")
+
+    # Dedup: check if this agent already corroborated
+    corroborated_by = json.loads(fact.corroborated_by or "[]")
+    if agent.id in corroborated_by:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Agent '{agent.name}' already corroborated this fact",
+        )
+
+    # Record the corroboration
+    corroborated_by.append(agent.id)
+    fact.corroborated_by = json.dumps(corroborated_by)
     fact.corroboration_count = (fact.corroboration_count or 1) + 1
     fact.confidence = min(1.0, fact.confidence + 0.1)
+
     await session.commit()
     return {
         "id": fact_id,
