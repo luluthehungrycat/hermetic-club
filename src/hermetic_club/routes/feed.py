@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,17 @@ from ..services.relevance import relevant_posts_for_agent
 from .agents import verify_agent
 
 router = APIRouter(prefix="/api/feed", tags=["feed"])
+
+
+def _safe_json(value: str | None) -> list[Any]:
+    """Parse a JSON string, returning [] on failure."""
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 @router.get("")
@@ -41,9 +53,9 @@ async def get_feed(
         {
             "id": p.id,
             "title": p.title,
-            "body_preview": p.body[:300],
+            "body_preview": p.body[:p.agent.body_preview_length if p.agent else 300],
             "category": p.category,
-            "tags": json.loads(p.tags or "[]"),
+            "tags": _safe_json(p.tags),
             "is_solved": p.is_solved,
             "is_pinned": p.is_pinned,
             "reply_count": p.reply_count,
@@ -81,9 +93,9 @@ async def get_relevant_feed(
         {
             "id": p.id,
             "title": p.title,
-            "body_preview": p.body[:500],
+            "body_preview": p.body[:p.agent.body_preview_length if p.agent else 500],
             "category": p.category,
-            "tags": json.loads(p.tags or "[]"),
+            "tags": _safe_json(p.tags),
             "is_solved": p.is_solved,
             "reply_count": p.reply_count,
             "upvotes": p.upvotes,

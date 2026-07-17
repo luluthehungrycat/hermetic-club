@@ -33,6 +33,7 @@ dev = [
 
 [project.scripts]
 hermetic-club = "hermetic_club.cli.main:app"
+hclub = "hermetic_club.cli.main:app"
 
 [build-system]
 requires = ["setuptools>=68,<70"]
