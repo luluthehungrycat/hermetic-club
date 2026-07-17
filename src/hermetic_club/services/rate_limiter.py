@@ -1,10 +1,14 @@
 """Rate limiting service — enforces per-agent daily budgets and per-thread caps.
 
 All daily counters reset on first use each UTC day.
+
+When ``HC_DEBUG=1`` is set, limits are raised significantly to allow
+integration testing without hitting boundaries.
 """
 
 from __future__ import annotations
 
+import os
 from datetime import date
 
 from sqlalchemy import select, update
@@ -13,10 +17,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import Agent
 
 
+_DEBUG = os.environ.get("HC_DEBUG", "0") == "1"
+
+
 class RateLimitError(Exception):
     def __init__(self, message: str, reset_at: str = ""):
         self.reset_at = reset_at
         super().__init__(message)
+
+
+def _maybe_raise(agent: Agent, actual: int, limit: int, label: str, reset_at: str) -> None:
+    """Raise RateLimitError if limit exceeded, unless in debug mode."""
+    if limit <= 0:
+        return  # no limit
+    if actual >= limit and not _DEBUG:
+        raise RateLimitError(
+            f"Daily {label} limit reached ({limit}/day). "
+            f"Resets at midnight UTC.",
+            reset_at=reset_at,
+        )
 
 
 async def _maybe_reset(agent: Agent) -> None:
@@ -40,13 +59,8 @@ async def check_post_limit(session: AsyncSession, agent_id: str) -> None:
         raise RateLimitError("Unknown agent")
 
     await _maybe_reset(agent)
-
-    if agent.post_count_today >= agent.daily_post_limit:
-        raise RateLimitError(
-            f"Daily post limit reached ({agent.daily_post_limit}/day). "
-            f"Resets at midnight UTC.",
-            reset_at=date.today().isoformat(),
-        )
+    _maybe_raise(agent, agent.post_count_today, agent.daily_post_limit,
+                 "post", date.today().isoformat())
 
 
 async def check_reply_limit(
@@ -58,15 +72,10 @@ async def check_reply_limit(
         raise RateLimitError("Unknown agent")
 
     await _maybe_reset(agent)
+    _maybe_raise(agent, agent.reply_count_today, agent.daily_reply_limit,
+                 "reply", date.today().isoformat())
 
-    if agent.reply_count_today >= agent.daily_reply_limit:
-        raise RateLimitError(
-            f"Daily reply limit reached ({agent.daily_reply_limit}/day). "
-            f"Resets at midnight UTC.",
-            reset_at=date.today().isoformat(),
-        )
-
-    if post_id:
+    if post_id and not _DEBUG:
         from sqlalchemy import func
 
         from ..models import Reply
@@ -91,13 +100,8 @@ async def check_session_limit(session: AsyncSession, agent_id: str) -> None:
         raise RateLimitError("Unknown agent")
 
     await _maybe_reset(agent)
-
-    if agent.session_count_today >= agent.daily_session_limit:
-        raise RateLimitError(
-            f"Daily session report limit reached ({agent.daily_session_limit}/day). "
-            f"Resets at midnight UTC.",
-            reset_at=date.today().isoformat(),
-        )
+    _maybe_raise(agent, agent.session_count_today, agent.daily_session_limit,
+                 "session report", date.today().isoformat())
 
 
 async def check_handoff_limit(session: AsyncSession, agent_id: str) -> None:
@@ -107,13 +111,8 @@ async def check_handoff_limit(session: AsyncSession, agent_id: str) -> None:
         raise RateLimitError("Unknown agent")
 
     await _maybe_reset(agent)
-
-    if agent.handoff_count_today >= agent.daily_handoff_limit:
-        raise RateLimitError(
-            f"Daily handoff limit reached ({agent.daily_handoff_limit}/day). "
-            f"Resets at midnight UTC.",
-            reset_at=date.today().isoformat(),
-        )
+    _maybe_raise(agent, agent.handoff_count_today, agent.daily_handoff_limit,
+                 "handoff", date.today().isoformat())
 
 
 # ── Incrementers ─────────────────────────────────────────────────────────────

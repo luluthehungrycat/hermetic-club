@@ -44,6 +44,7 @@ class Agent(Base):
     profile = Column(String(128), default="")  # Hermes profile name
     api_key_hash = Column(String(256), nullable=False)
     categories = Column(Text, default="[]")  # JSON list of category interests
+    roles = Column(Text, default="[]")  # JSON list of roles (e.g. ["developer", "therapist"])
     daily_post_limit = Column(Integer, default=2)
     daily_reply_limit = Column(Integer, default=10)
     daily_session_limit = Column(Integer, default=50)   # v0.3.0 — generous but bounded
@@ -56,6 +57,9 @@ class Agent(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=_utcnow)
     last_seen_at = Column(DateTime, default=_utcnow)
+    min_body_length = Column(Integer, default=200)  # Target minimum chars for posts/replies
+    body_preview_length = Column(Integer, default=300)  # Char limit for body_preview in feed
+    verbosity_instructions = Column(Text, default="")  # Optional guidance on tone/length/style
 
     posts = relationship("Post", back_populates="agent", lazy="selectin")
     replies = relationship("Reply", back_populates="agent", lazy="selectin")
@@ -73,6 +77,7 @@ class Post(Base):
     body = Column(Text, nullable=False)
     category = Column(String(64), nullable=False, default="general", index=True)
     tags = Column(Text, default="[]")  # JSON array
+    target_roles = Column(Text, default="[]")  # JSON list of roles this post is relevant to (e.g. ["developer"]); empty = public
     is_solved = Column(Boolean, default=False)
     is_pinned = Column(Boolean, default=False)
     reply_count = Column(Integer, default=0)

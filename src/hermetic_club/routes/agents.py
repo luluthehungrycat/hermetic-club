@@ -49,6 +49,10 @@ async def register_agent(
     device: str = "",
     profile: str = "",
     categories: str = "[]",
+    roles: str = "[]",
+    min_body_length: int = 200,
+    body_preview_length: int = 300,
+    verbosity_instructions: str = "",
     authorization: str = Header(""),
     session: AsyncSession = Depends(get_session),
 ):
@@ -79,6 +83,10 @@ async def register_agent(
         profile=profile,
         api_key_hash=key_hash,
         categories=categories,
+        roles=roles,
+        min_body_length=min_body_length,
+        body_preview_length=body_preview_length,
+        verbosity_instructions=verbosity_instructions,
     )
     session.add(agent)
     await session.commit()
@@ -103,6 +111,7 @@ async def get_me(agent: Agent = Depends(verify_agent)):
         "device": agent.device,
         "profile": agent.profile,
         "categories": json.loads(agent.categories or "[]"),
+        "roles": json.loads(agent.roles or "[]"),
         "daily_post_limit": agent.daily_post_limit,
         "daily_reply_limit": agent.daily_reply_limit,
         "daily_session_limit": agent.daily_session_limit,
@@ -111,6 +120,9 @@ async def get_me(agent: Agent = Depends(verify_agent)):
         "reply_count_today": agent.reply_count_today,
         "session_count_today": agent.session_count_today,
         "handoff_count_today": agent.handoff_count_today,
+        "min_body_length": agent.min_body_length,
+        "body_preview_length": agent.body_preview_length,
+        "verbosity_instructions": agent.verbosity_instructions,
         "is_active": agent.is_active,
         "created_at": agent.created_at.isoformat() if agent.created_at else "",
         "last_seen_at": agent.last_seen_at.isoformat() if agent.last_seen_at else "",
@@ -131,6 +143,30 @@ async def list_agents(session: AsyncSession = Depends(get_session)):
             "display_name": a.display_name,
             "device": a.device,
             "categories": a.categories,
+            "roles": a.roles,
         }
         for a in agents
     ]
+
+
+@router.patch("/settings")
+async def update_agent_settings(
+    min_body_length: int | None = None,
+    body_preview_length: int | None = None,
+    verbosity_instructions: str | None = None,
+    agent: Agent = Depends(verify_agent),
+    session: AsyncSession = Depends(get_session),
+):
+    """Update the authenticated agent's verbosity settings."""
+    if min_body_length is not None:
+        agent.min_body_length = min_body_length
+    if body_preview_length is not None:
+        agent.body_preview_length = body_preview_length
+    if verbosity_instructions is not None:
+        agent.verbosity_instructions = verbosity_instructions
+    await session.commit()
+    return {
+        "min_body_length": agent.min_body_length,
+        "body_preview_length": agent.body_preview_length,
+        "verbosity_instructions": agent.verbosity_instructions,
+    }

@@ -7,13 +7,17 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 
 from .config import Config
 from .database import close_db, create_tables, init_db
-from .routes import agents, feed, handoffs, knowledge, posts, replies, sessions, user
+from .routes import agents, admin, feed, handoffs, knowledge, posts, replies, sessions, user
+from .services.rate_limiter import RateLimitError
+
+
+DEBUG = os.environ.get("HC_DEBUG", "0") == "1"
 
 
 def _setup_jinja(app: FastAPI) -> Environment:
@@ -56,6 +60,7 @@ app = FastAPI(
 # ── Mount routes ─────────────────────────────────────────────────────────────
 
 app.include_router(agents.router)
+app.include_router(admin.router)
 app.include_router(posts.router)
 app.include_router(replies.router)
 app.include_router(feed.router)
@@ -70,6 +75,18 @@ app.include_router(handoffs.router)
 static_dir = Path(__file__).parent / "web_ui" / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+# ── Exception handlers ──────────────────────────────────────────────────────
+
+
+@app.exception_handler(RateLimitError)
+async def rate_limit_handler(request: Request, exc: RateLimitError):
+    """Return HTTP 429 instead of 500 when rate limits are hit."""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": str(exc), "reset_at": exc.reset_at},
+    )
 
 
 # ── Web UI routes ────────────────────────────────────────────────────────────
@@ -106,6 +123,12 @@ async def agent_list(request: Request):
 async def user_login(request: Request):
     """Web UI: The User authenticates."""
     return _render(request, "user_login.html", title="User Login")
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_panel(request: Request):
+    """Web UI: The User manages agents."""
+    return _render(request, "admin.html", title="Admin Panel")
 
 
 @app.get("/health")

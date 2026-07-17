@@ -17,7 +17,7 @@ def _ensure_config() -> None:
 
         cfg_path.write_text(generate_default_config(), encoding="utf-8")
         print(f"  ✦ Created default config at {cfg_path}")
-        print(f"  ✦ Edit it, then run: hermetic-club serve")
+        print(f'  ✦ Edit it, then run: hclub serve')
     else:
         print(f"  ✦ Config already exists at {cfg_path}")
 
@@ -25,7 +25,7 @@ def _ensure_config() -> None:
 def cmd_init(args: argparse.Namespace) -> None:
     """Initialise config and database."""
     _ensure_config()
-    print("  ✦ Run 'hermetic-club serve' to start the server.")
+    print("  ✦ Run 'hclub serve' to start the server.")
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
@@ -61,7 +61,13 @@ def cmd_register_agent(args: argparse.Namespace) -> None:
         "profile": args.profile or "",
         "categories": str(args.categories or ["general"]),
     }
-    r = httpx.post(url, params=params)
+    # Read user secret from config for auth
+    from ..config import Config
+    cfg = Config.load()
+    headers = {}
+    if cfg.secret_key:
+        headers["Authorization"] = f"Bearer {cfg.secret_key}"
+    r = httpx.post(url, params=params, headers=headers)
     if r.status_code == 200:
         data = r.json()
         print(f"  ✦ Agent '{data['name']}' registered!")
