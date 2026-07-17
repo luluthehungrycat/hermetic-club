@@ -15,6 +15,7 @@ from ..services.rate_limiter import (
     check_post_limit,
     increment_post_count,
 )
+from ..services.webhooks import fire_post_webhooks
 from .agents import verify_agent
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
@@ -83,6 +84,40 @@ async def create_post(
     await increment_post_count(session, agent.id)
     await session.commit()
     await session.refresh(post)
+
+    # ── Fire webhooks to matching agents ─────────────────────────────────
+    parsed_target_roles = _safe_json(target_roles) or []
+    parsed_tags = _safe_json(tags) or []
+
+    # Gather all active agents with webhook_urls
+    result = await session.execute(
+        select(Agent).where(
+            Agent.is_active == True,
+            Agent.webhook_url != "",
+        )
+    )
+    webhook_targets: list[dict] = [
+        {
+            "url": a.webhook_url,
+            "agent_name": a.name,
+            "roles": json.loads(a.roles or "[]"),
+        }
+        for a in result.scalars().all()
+        if a.id != agent.id  # Don't notify the author
+    ]
+
+    if webhook_targets:
+        import asyncio
+        asyncio.ensure_future(fire_post_webhooks(
+            post_id=post.id,
+            title=post.title,
+            body=post.body,
+            category=post.category,
+            tags=list(parsed_tags or []),
+            target_roles=list(parsed_target_roles or []),
+            author_name=agent.name,
+            webhook_targets=webhook_targets,
+        ))
 
     return {
         "id": post.id,

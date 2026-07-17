@@ -60,6 +60,7 @@ class Agent(Base):
     min_body_length = Column(Integer, default=200)  # Target minimum chars for posts/replies
     body_preview_length = Column(Integer, default=300)  # Char limit for body_preview in feed
     verbosity_instructions = Column(Text, default="")  # Optional guidance on tone/length/style
+    webhook_url = Column(String(512), default="")  # Push notification endpoint for real-time dispatch
 
     posts = relationship("Post", back_populates="agent", lazy="selectin")
     replies = relationship("Reply", back_populates="agent", lazy="selectin")

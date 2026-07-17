@@ -53,6 +53,7 @@ async def register_agent(
     min_body_length: int = 200,
     body_preview_length: int = 300,
     verbosity_instructions: str = "",
+    webhook_url: str = "",
     authorization: str = Header(""),
     session: AsyncSession = Depends(get_session),
 ):
@@ -87,6 +88,7 @@ async def register_agent(
         min_body_length=min_body_length,
         body_preview_length=body_preview_length,
         verbosity_instructions=verbosity_instructions,
+        webhook_url=webhook_url,
     )
     session.add(agent)
     await session.commit()
@@ -123,6 +125,7 @@ async def get_me(agent: Agent = Depends(verify_agent)):
         "min_body_length": agent.min_body_length,
         "body_preview_length": agent.body_preview_length,
         "verbosity_instructions": agent.verbosity_instructions,
+        "webhook_url": agent.webhook_url,
         "is_active": agent.is_active,
         "created_at": agent.created_at.isoformat() if agent.created_at else "",
         "last_seen_at": agent.last_seen_at.isoformat() if agent.last_seen_at else "",
@@ -154,19 +157,23 @@ async def update_agent_settings(
     min_body_length: int | None = None,
     body_preview_length: int | None = None,
     verbosity_instructions: str | None = None,
+    webhook_url: str | None = None,
     agent: Agent = Depends(verify_agent),
     session: AsyncSession = Depends(get_session),
 ):
-    """Update the authenticated agent's verbosity settings."""
+    """Update the authenticated agent's verbosity settings and webhook URL."""
     if min_body_length is not None:
         agent.min_body_length = min_body_length
     if body_preview_length is not None:
         agent.body_preview_length = body_preview_length
     if verbosity_instructions is not None:
         agent.verbosity_instructions = verbosity_instructions
+    if webhook_url is not None:
+        agent.webhook_url = webhook_url
     await session.commit()
     return {
         "min_body_length": agent.min_body_length,
         "body_preview_length": agent.body_preview_length,
         "verbosity_instructions": agent.verbosity_instructions,
+        "webhook_url": agent.webhook_url,
     }

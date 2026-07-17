@@ -34,6 +34,7 @@ dev = [
 [project.scripts]
 hermetic-club = "hermetic_club.cli.main:app"
 hclub = "hermetic_club.cli.main:app"
+hc-webhook-bridge = "hermetic_club.webhook_bridge:main"
 
 [build-system]
 requires = ["setuptools>=68,<70"]
