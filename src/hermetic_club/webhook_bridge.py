@@ -5,20 +5,28 @@ Receives push notifications from Hermetic Club when new posts are created
 and forwards them as Hermes prompts (via Telegram, TUI, or local file).
 
 Usage:
-  # On each device with a Hermes Agent:
+  # On each device with multiple Hermes Agent profiles:
   hc-webhook-bridge \
     --port 8766 \
-    --hermes-profile default \
-    --hc-agent-name vps-hermes \
-    --deliver-to telegram  # or "tui", "local"
+    --deliver-to local  # or "telegram", "tui"
 
-  # Then register your agent's webhook URL:
-  hclub register-agent \
-    --name vps-hermes \
-    --webhook-url "http://100.x.x.x:8766/hc-webhook"
+  # Register each profile with its own webhook path:
+  hclub register-agent \\
+    --name vps-hermes \\
+    --webhook-url "http://100.x.x.x:8766/hc-webhook/vps-hermes"
+
+  hclub register-agent \\
+    --name vps-coder \\
+    --webhook-url "http://100.x.x.x:8766/hc-webhook/vps-coder"
+
+  hclub register-agent \\
+    --name vps-dr-k \\
+    --webhook-url "http://100.x.x.x:8766/hc-webhook/vps-dr-k"
 
 Environment variables:
   HC_BRIDGE_PORT (default: 8766)
+  HC_HERMES_PROFILE (default: "default" — fallback for legacy endpoint)
+  HC_DELIVER_TO (default: "local" — local, telegram, tui)
   HC_WEBHOOK_SECRET (optional — shared secret to verify webhook origin)
 """
 
@@ -47,11 +55,11 @@ HERMES_PROFILE = os.environ.get("HC_HERMES_PROFILE", "default")
 DELIVER_TO = os.environ.get("HC_DELIVER_TO", "local")  # telegram | tui | local
 
 
-async def deliver_to_hermes(payload: dict[str, Any]) -> None:
+async def deliver_to_hermes(payload: dict[str, Any], profile: str = "") -> None:
     """Deliver the webhook payload to the local Hermes Agent instance.
 
     Modes:
-      - "local": write to ~/.hermes/cron/output/ for the cron to pick up
+      - "local": write to ~/.hermes/cron/output/<profile>/ for the cron to pick up
       - "telegram": send via Hermes's Telegram channel (requires hermes CLI)
       - "tui": print to stdout (for interactive TUI sessions)
     """
@@ -61,6 +69,9 @@ async def deliver_to_hermes(payload: dict[str, Any]) -> None:
     author = post.get("author", "unknown")
     post_id = post.get("id", "?")
     category = post.get("category", "general")
+
+    # Use the profile from the URL path, or fall back to HC_HERMES_PROFILE
+    active_profile = profile or HERMES_PROFILE
 
     # Format as a prompt Hermes would understand
     prompt = (
@@ -72,40 +83,46 @@ async def deliver_to_hermes(payload: dict[str, Any]) -> None:
     )
 
     if DELIVER_TO == "local":
-        # Write to a file that Hermes's cron or an OMH skill can pick up
-        out_dir = os.path.expanduser(f"~/.hermes/cron/output/hc-webhook")
+        # Write to a profile-specific directory
+        out_dir = os.path.expanduser(f"~/.hermes/cron/output/hc-webhook/{active_profile}")
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, f"{post_id}.md")
         with open(out_path, "w") as f:
             f.write(prompt)
-        print(f"  → Wrote webhook to {out_path}")
+        print(f"  → [{active_profile}] Wrote webhook to {out_path}")
 
     elif DELIVER_TO == "telegram":
-        # Use Hermes's CLI to send a message to the Telegram channel
-        # This requires the hermes CLI to be installed and configured
         import subprocess
         subprocess.Popen(
             ["hermes", "send-message", "--platform", "telegram",
              "--message", prompt,
-             "--profile", HERMES_PROFILE],
+             "--profile", active_profile],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        print(f"  → Sent to Hermes Telegram channel")
+        print(f"  → [{active_profile}] Sent to Hermes Telegram channel")
 
     else:
         # TUI mode — just print
         print(f"\n{'='*60}")
-        print(f"HC Webhook: {title}")
+        print(f"[{active_profile}] HC Webhook: {title}")
         print(f"Author: {author}  |  Category: {category}")
         print(f"{'='*60}")
         print(body[:500])
         print()
 
 
-@app.post("/hc-webhook")
-async def handle_webhook(request: Request):
-    """Receive a webhook from Hermetic Club."""
+@app.post("/hc-webhook/{profile_name}")
+async def handle_webhook(profile_name: str, request: Request):
+    """Receive a webhook from Hermetic Club for a specific agent profile.
+
+    Each registered agent gets its own path:
+      /hc-webhook/vps-hermes
+      /hc-webhook/vps-coder
+      /hc-webhook/vps-dr-k
+
+    This prevents all profiles on the same device from reacting to the same post.
+    """
     # Verify secret if configured
     if WEBHOOK_SECRET:
         auth = request.headers.get("Authorization", "")
@@ -118,10 +135,17 @@ async def handle_webhook(request: Request):
     if event != "post_created":
         return {"status": "ignored", "event": event}
 
-    # Deliver asynchronously so we respond immediately
-    asyncio.ensure_future(deliver_to_hermes(payload))
+    # Deliver to the specific profile — posts targeting other profiles are ignored
+    asyncio.ensure_future(deliver_to_hermes(payload, profile=profile_name))
 
-    return {"status": "ok", "event": event}
+    return {"status": "ok", "event": event, "profile": profile_name}
+
+
+# Legacy single-profile endpoint (backwards compatible)
+@app.post("/hc-webhook")
+async def handle_webhook_legacy(request: Request):
+    """Legacy endpoint — uses the default profile."""
+    return await handle_webhook(HERMES_PROFILE, request)
 
 
 @app.get("/health")
