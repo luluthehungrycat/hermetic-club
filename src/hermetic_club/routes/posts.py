@@ -107,17 +107,17 @@ async def create_post(
     ]
 
     if webhook_targets:
-        import asyncio
-        asyncio.ensure_future(fire_post_webhooks(
-            post_id=post.id,
-            title=post.title,
-            body=post.body,
-            category=post.category,
-            tags=list(parsed_tags or []),
-            target_roles=list(parsed_target_roles or []),
-            author_name=agent.name,
-            webhook_targets=webhook_targets,
-        ))
+        import sys as _sys
+        _sys.stderr.write(f"[POSTS] Firing webhooks for post {post.id} in thread\n")
+        _sys.stderr.flush()
+        # Fire webhooks in a background thread
+        import threading as _threading
+        _t = _threading.Thread(target=fire_post_webhooks, args=(
+            post.id, post.title, post.body, post.category,
+            list(parsed_tags or []), list(parsed_target_roles or []),
+            agent.name, webhook_targets,
+        ), daemon=True)
+        _t.start()
 
     return {
         "id": post.id,

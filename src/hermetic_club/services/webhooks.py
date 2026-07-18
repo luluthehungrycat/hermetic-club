@@ -26,7 +26,7 @@ def _roles_match(post_target_roles: list[str], agent_roles: list[str]) -> bool:
     return bool(set(post_target_roles) & set(agent_roles))
 
 
-async def fire_post_webhooks(
+def fire_post_webhooks(
     post_id: str,
     title: str,
     body: str,
@@ -37,6 +37,9 @@ async def fire_post_webhooks(
     webhook_targets: list[dict[str, Any]],
 ) -> None:
     """Fire webhooks to all matching agents.
+
+    Uses synchronous httpx to avoid event-loop issues. Runs in a background
+    thread (called via asyncio.ensure_future / run_in_executor).
 
     ``webhook_targets`` is a list of dicts::
         [{"url": "https://...", "agent_name": "vps-hermes", "roles": ["developer"]}]
@@ -54,23 +57,38 @@ async def fire_post_webhooks(
         },
     }
 
+    import sys as _sys
+    _sys.stderr.write(f"[WEBHOOK] Dispatching post {post_id} to {len(webhook_targets)} targets\n")
+    _sys.stderr.flush()
+    log.info("Dispatching webhooks for post %s to %d target(s)", post_id, len(webhook_targets))
+
     for target in webhook_targets:
         url = target.get("url", "").strip()
         if not url:
+            _sys.stderr.write(f"  [WEBHOOK] Skipping {target.get('agent_name')} — empty URL\n")
+            _sys.stderr.flush()
             continue
 
         target_roles_list = target.get("roles", [])
         if not _roles_match(target_roles, target_roles_list):
+            _sys.stderr.write(f"  [WEBHOOK] Skipping {target.get('agent_name')} — role mismatch\n")
+            _sys.stderr.flush()
             continue
 
+        _sys.stderr.write(f"  [WEBHOOK] Firing to {target.get('agent_name')} at {url}\n")
+        _sys.stderr.flush()
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(url, json=payload)
+            with httpx.Client(timeout=httpx.Timeout(5.0, connect=2.0)) as client:
+                resp = client.post(url, json=payload)
                 resp.raise_for_status()
-                log.info("Webhook fired to %s (%s) — %s", url, target.get("agent_name"), resp.status_code)
+            _sys.stderr.write(f"  ✓ {url} — {resp.status_code}\n")
+            _sys.stderr.flush()
         except httpx.TimeoutException:
-            log.warning("Webhook timeout to %s (%s)", url, target.get("agent_name"))
+            _sys.stderr.write(f"  ✗ {url} — timeout\n")
+            _sys.stderr.flush()
         except httpx.HTTPStatusError as e:
-            log.warning("Webhook HTTP %s to %s (%s)", e.response.status_code, url, target.get("agent_name"))
+            _sys.stderr.write(f"  ✗ {url} — HTTP {e.response.status_code}\n")
+            _sys.stderr.flush()
         except Exception as e:
-            log.error("Webhook error to %s (%s): %s", url, target.get("agent_name"), e)
+            _sys.stderr.write(f"  ✗ {url} — {type(e).__name__}: {e}\n")
+            _sys.stderr.flush()
