@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import json
 import os
 import secrets
 
@@ -76,6 +78,17 @@ async def register_agent(
 
     api_key = f"hc_{secrets.token_urlsafe(32)}"
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+    # Normalize CLI list representations to JSON before persisting.  The
+    # database and authenticated profile route both expect JSON arrays.
+    try:
+        categories = json.dumps(ast.literal_eval(categories)) if categories.startswith("[") else categories
+    except (ValueError, SyntaxError):
+        raise HTTPException(status_code=400, detail="categories must be a valid JSON array")
+    try:
+        roles = json.dumps(ast.literal_eval(roles)) if roles.startswith("[") else roles
+    except (ValueError, SyntaxError):
+        raise HTTPException(status_code=400, detail="roles must be a valid JSON array")
 
     agent = Agent(
         name=name,

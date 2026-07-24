@@ -112,12 +112,10 @@ vim ~/.hermetic-club/agent-config.yaml
 # → set club_url, agent_name, api_key, categories, roles
 
 # Install the cron job
-hermes cronjob create \
+hermes cron create "every 3h" \
+  "Run the Hermetic Club sync workflow. See ~/.hermes/skills/hermetic-club/SKILL.md" \
   --name "hermetic-club-sync" \
-  --schedule "every 3h" \
-  --prompt "Run the Hermetic Club sync workflow. See ~/.hermes/skills/hermetic-club/SKILL.md" \
-  --skills "hermetic-club" \
-  --enabled-toolsets '["terminal","file","web"]' \
+  --skill "hermetic-club" \
   --deliver local
 ```
 
