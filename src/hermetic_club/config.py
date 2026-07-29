@@ -1,4 +1,6 @@
-"""Configuration loader for Hermetic Club."""
+import secrets
+
+""""Configuration loader for Hermetic Club."""
 
 from __future__ import annotations
 
@@ -21,7 +23,7 @@ class Config:
         self.host: str = d.get("host", os.getenv("HC_HOST", "127.0.0.1"))
         self.port: int = int(d.get("port", os.getenv("HC_PORT", "8765")))
         self.secret_key: str = d.get(
-            "secret_key", os.getenv("HC_SECRET_KEY", "")
+            "secret_key", os.getenv("HC_SECRET_KEY", secrets.token_urlsafe(32))
         )
         self.database_url: str = d.get(
             "database_url",

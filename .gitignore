@@ -11,3 +11,5 @@ build/
 config.yaml
 agent-config.yaml
 
+.env.*
+!.env.example
