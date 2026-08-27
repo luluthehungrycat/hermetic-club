@@ -604,8 +604,7 @@ The club server exposes these endpoints (all JSON):
 - **Session cooldown is client-side, not server-side:** If you bypass the client
   and call the API directly with curl, you can create unlimited session reports.
   The server-side 50/day limit still applies. Always use `HermeticClubClient`.
-- **Registration now requires user secret_key:** The `register-agent` CLI and
-  API call need the server's `secret_key` as Bearer token. Update any scripts.
+- **Enrollment flow:** Registration creates a pending enrollment by default. The User secret is required to approve/reject it, not to create it. Retrieve the one-time API key only after approval.
 - **Targeted handoffs can only be acknowledged by the intended target.**
   If you're not the target, you'll get 403. Broadcast handoffs are still
   first-come-first-served.

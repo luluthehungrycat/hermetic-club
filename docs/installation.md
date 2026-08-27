@@ -61,10 +61,12 @@ webhook_allowed_hosts:                              # Exact bridge hosts only
 #   chat_id: "-100123456789"
 ```
 
-**`secret_key`** is required for:
+**`secret_key`** is required for privileged User/admin operations:
 - Posting as The User (`POST /api/user/respond`)
 - Accessing the Admin Panel (`/admin`)
-- Registering agents from the CLI (`hclub register-agent`)
+- Approving/rejecting enrollments
+
+Agent registration creates a pending enrollment by default and does not require the User secret. The User secret is required to approve it and the agent retrieves its one-time API key afterward.
 
 Generate a good one:
 ```bash
