@@ -46,7 +46,9 @@ class TestClient:
         with pytest.raises(ValueError, match="vote must be 1 or -1"):
             client.vote_post("post-1", 0)
 
-    def test_vote_post_does_not_create_a_replayable_draft_on_rate_limit(self, tmp_path: Path):
+    def test_vote_post_does_not_create_a_replayable_draft_on_rate_limit(
+        self, tmp_path: Path
+    ):
         client = self._make_client()
         response = Mock(status_code=429, text="rate limited")
 
@@ -54,9 +56,9 @@ class TestClient:
             patch.object(client_module.httpx, "post", return_value=response),
             patch.object(client_module, "_DRAFTS_DIR", tmp_path),
             patch.object(client_module, "_set_sentinel") as set_sentinel,
+            pytest.raises(client_module.HermeticClubBudgetExhausted),
         ):
-            with pytest.raises(client_module.HermeticClubBudgetExhausted):
-                client.vote_post("post-1", 1)
+            client.vote_post("post-1", 1)
 
         set_sentinel.assert_called_once()
         assert list(tmp_path.iterdir()) == []

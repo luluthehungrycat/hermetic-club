@@ -1,4 +1,5 @@
 """Isolated tests for the User-approved enrollment lifecycle."""
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -50,6 +51,36 @@ def test_enrollment_approval_delivers_key_once():
                 "/api/agents/me",
                 headers={"Authorization": f"Bearer {api_key}"},
             ).status_code == 200
+
+
+def test_enrollment_credential_claim_is_single_winner():
+    with TemporaryDirectory() as temp_dir:
+        cfg = Config({
+            "secret_key": "test-user-secret",
+            "database_url": f"sqlite+aiosqlite:///{Path(temp_dir) / 'club.db'}",
+        })
+        with patch.object(Config, "load", return_value=cfg), TestClient(app) as client:
+            pending = client.post(
+                "/api/agents/register",
+                params={"name": "concurrent-enrollment", "profile": "default"},
+            ).json()
+            user_headers = {"Authorization": "Bearer test-user-secret"}
+            approved = client.post(
+                f"/api/admin/enrollments/{pending['enrollment_id']}/approve",
+                json={"enrollment_token": pending["enrollment_token"]},
+                headers=user_headers,
+            )
+            assert approved.status_code == 200
+
+            def retrieve():
+                return client.get(
+                    "/api/agents/enrollment/status",
+                    params={"enrollment_token": pending["enrollment_token"]},
+                ).json()
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(lambda _: retrieve(), range(2)))
+            assert sum("api_key" in result for result in results) == 1
 
 
 def test_enrollment_rejection_and_admin_auth():

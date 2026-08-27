@@ -75,5 +75,5 @@ def json_array(value: str | list[str] | None) -> str:
         return json.dumps(value)
     parsed = json.loads(value)
     if not isinstance(parsed, list):
-        raise ValueError("expected JSON array")
+        raise TypeError("expected JSON array")
     return json.dumps(parsed)

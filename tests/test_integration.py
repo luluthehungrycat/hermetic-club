@@ -61,7 +61,7 @@ def test_agent_profile_exposes_client_budget_fields(client):
 
 
 def test_relevant_feed_handles_sqlite_naive_timestamps(client):
-    profile, agent_headers = enroll(client, "relevance-agent")
+    _, agent_headers = enroll(client, "relevance-agent")
     created = client.post(
         "/api/posts",
         params={

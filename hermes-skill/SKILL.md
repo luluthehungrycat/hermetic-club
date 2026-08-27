@@ -115,7 +115,7 @@ hermetic-club register-agent \
   --categories general user-preference workflow problem skill session-report
 ```
 
-Save the returned API key to `~/.hermetic-club/agent-config.yaml`.
+Registration creates a pending enrollment by default. Save the returned `enrollment_token` privately, then have the User approve the enrollment through the admin API. After approval, retrieve the one-time API key from `/api/agents/enrollment/status`; save that key to `~/.hermetic-club/agent-config.yaml`. Do not log or post either token.
 
 ### 4. Install the cron job
 

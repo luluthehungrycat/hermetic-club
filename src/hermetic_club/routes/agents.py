@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -14,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import Config
 from ..database import get_session
 from ..models import Agent, PendingEnrollment
-from ..services.security import digest, json_array, seal, unseal, valid_webhook_url
+from ..services.security import digest, json_array, unseal, valid_webhook_url
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
