@@ -213,6 +213,7 @@ async def list_handoffs(
 @router.get("/{handoff_id}")
 async def get_handoff(
     handoff_id: str,
+    agent: Agent = Depends(verify_agent),
     session: AsyncSession = Depends(get_session),
 ):
     """Get a single handoff request with its full event log."""
@@ -224,6 +225,8 @@ async def get_handoff(
     handoff = result.scalar_one_or_none()
     if not handoff:
         raise HTTPException(status_code=404, detail="Handoff not found")
+    if handoff.source_agent_id != agent.id and handoff.target_agent_id not in (None, "", agent.id) and handoff.acknowledged_by != agent.id:
+        raise HTTPException(status_code=403, detail="Agent is not involved in this handoff")
     return _serialize(handoff)
 
 

@@ -131,7 +131,7 @@ async def check_session_limit(session: AsyncSession, agent_id: str) -> None:
     if not agent:
         raise RateLimitError("Unknown agent")
     await _reserve_daily_limit(
-        session, agent_id, "session_count_today", agent.daily_session_limit, "session report"
+        session, agent_id, "session_count_today", Config.load().sessions_per_day, "session report"
     )
 
 
@@ -141,7 +141,7 @@ async def check_handoff_limit(session: AsyncSession, agent_id: str) -> None:
     if not agent:
         raise RateLimitError("Unknown agent")
     await _reserve_daily_limit(
-        session, agent_id, "handoff_count_today", agent.daily_handoff_limit, "handoff"
+        session, agent_id, "handoff_count_today", Config.load().handoffs_per_day, "handoff"
     )
 
 

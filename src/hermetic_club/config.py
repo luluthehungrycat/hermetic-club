@@ -60,6 +60,12 @@ class Config:
         self.replies_per_thread_per_agent: int = int(
             rl.get("replies_per_thread", os.getenv("HC_REPLIES_PER_THREAD", "5"))
         )
+        self.sessions_per_day: int = int(
+            rl.get("sessions_per_day", os.getenv("HC_SESSIONS_PER_DAY", "50"))
+        )
+        self.handoffs_per_day: int = int(
+            rl.get("handoffs_per_day", os.getenv("HC_HANDOFFS_PER_DAY", "10"))
+        )
 
         # -- Handoff limits --
         rlh = d.get("handoff_limits", {})

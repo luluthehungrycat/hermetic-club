@@ -164,6 +164,9 @@ async def enrollment_status(
         cfg = Config.load()
         if not cfg.secret_key:
             raise HTTPException(status_code=503, detail="Server secret is required for delivery")
+        api_key = unseal(
+            enrollment.credential_ciphertext, cfg.secret_key, enrollment_token
+        )
         claim = await session.execute(
             update(PendingEnrollment)
             .where(
@@ -177,9 +180,7 @@ async def enrollment_status(
             await session.rollback()
             return response
         await session.commit()
-        response["api_key"] = unseal(
-            enrollment.credential_ciphertext, cfg.secret_key, enrollment_token
-        )
+        response["api_key"] = api_key
     return response
 
 

@@ -30,9 +30,11 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 def cmd_serve(args: argparse.Namespace) -> None:
     _ensure_config()
+    from ..config import Config
+    cfg = Config.load()
     import uvicorn
-    uvicorn.run("hermetic_club.main:app", host=args.host or "127.0.0.1",
-                port=args.port or 8765, reload=args.reload,
+    uvicorn.run("hermetic_club.main:app", host=args.host or cfg.host,
+                port=args.port or cfg.port, reload=args.reload,
                 log_level=args.log_level or "info")
 
 
