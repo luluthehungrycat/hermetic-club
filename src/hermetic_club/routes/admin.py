@@ -200,6 +200,8 @@ async def activate_artifact(artifact_id: str, _=Depends(verify_user), session: A
     if not item:
         raise HTTPException(status_code=404, detail="Artifact record not found")
     item.approved_by_user = True
+    item.approved_by_identity = "user"
+    item.approved_at = datetime.now(timezone.utc)
     item.activated = True
     await session.commit()
     return {"id": item.id, "activated": True, "manifest": json.loads(item.manifest)}

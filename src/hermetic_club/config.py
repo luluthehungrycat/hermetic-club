@@ -18,8 +18,8 @@ class Config:
         d = data or {}
 
         # -- Server --
-        self.host: str = d.get("host", os.getenv("HC_HOST", "127.0.0.1"))
-        self.port: int = int(d.get("port", os.getenv("HC_PORT", "8765")))
+        self.host: str = os.getenv("HC_HOST") or d.get("host", "127.0.0.1")
+        self.port: int = int(os.getenv("HC_PORT") or d.get("port", 8765))
         self.secret_key: str = d.get(
             "secret_key", os.getenv("HC_SECRET_KEY", "")
         )

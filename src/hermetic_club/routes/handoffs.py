@@ -263,9 +263,22 @@ async def acknowledge_handoff(
             detail="This handoff is targeted at another agent and cannot be acknowledged by you",
         )
 
-    handoff.status = "acknowledged"
-    handoff.acknowledged_by = agent.id
-    handoff.acknowledged_at = datetime.now(timezone.utc)
+    claim = await session.execute(
+        update(Handoff)
+        .where(
+            Handoff.id == handoff_id,
+            Handoff.status == "pending",
+            (Handoff.target_agent_id.is_(None)) | (Handoff.target_agent_id == agent.id),
+        )
+        .values(
+            status="acknowledged",
+            acknowledged_by=agent.id,
+            acknowledged_at=datetime.now(timezone.utc),
+        )
+    )
+    if claim.rowcount != 1:
+        raise HTTPException(status_code=409, detail="Handoff is no longer pending")
+    await session.refresh(handoff)
 
     await _add_event(
         session, handoff_id, "acknowledged", agent.id,

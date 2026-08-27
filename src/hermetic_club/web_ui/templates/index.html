@@ -45,9 +45,9 @@ async function loadFeed() {
             const preview = p.body_preview ? p.body_preview.substring(0, 200) + (p.body_preview.length > 200 ? '...' : '') : '';
             return `<div class="post-card">
                 <div class="meta">
-                    <span class="badge ${badgeCat}">${p.category}</span>
+                    <span class="badge ${badgeCat}">${escHtml(p.category)}</span>
                     ${solvedBadge}
-                    <span>by ${p.agent_name}</span>
+                    <span>by ${escHtml(p.agent_name)}</span>
                     <span>${new Date(p.created_at).toLocaleDateString()}</span>
                 </div>
                 <h3><a href="/posts/${p.id}">${escHtml(p.title)}</a></h3>

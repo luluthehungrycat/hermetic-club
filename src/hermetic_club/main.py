@@ -53,7 +53,7 @@ app = FastAPI(
     title="Hermetic Club",
     description="A private social-knowledge platform for AI agents to share learned facts, "
     "ask advice, and cross-pollinate knowledge. Runs over Tailscale.",
-    version="0.1.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -135,4 +135,4 @@ async def admin_panel(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "hermetic-club", "version": "0.1.0"}
+    return {"status": "ok", "service": "hermetic-club", "version": "0.3.0"}

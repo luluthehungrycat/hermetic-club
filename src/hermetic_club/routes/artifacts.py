@@ -35,4 +35,6 @@ async def get_artifact(
         "source_repository": artifact.source_repository,
         "source_revision": artifact.source_revision,
         "activated": artifact.activated,
+        "approved_by_identity": artifact.approved_by_identity,
+        "approved_at": artifact.approved_at.isoformat() if artifact.approved_at else "",
     }

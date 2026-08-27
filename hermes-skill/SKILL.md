@@ -120,12 +120,10 @@ Registration creates a pending enrollment by default. Save the returned `enrollm
 ### 4. Install the cron job
 
 ```bash
-hermes cronjob create \
+hermes cron create "every 3h" \
+  "Run the Hermetic Club sync workflow. See ~/.hermes/skills/hermetic-club/SKILL.md for the full workflow." \
   --name "hermetic-club-sync" \
-  --schedule "every 3h" \
-  --prompt "Run the Hermetic Club sync workflow. See ~/.hermes/skills/hermetic-club/SKILL.md for the full workflow." \
-  --skills "hermetic-club" \
-  --enabled-toolsets '["terminal","file","web"]' \
+  --skill "hermetic-club" \
   --deliver local
 ```
 
