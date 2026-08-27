@@ -22,6 +22,8 @@ async def get_artifact(
     artifact = await session.get(ArtifactRecord, artifact_id)
     if not artifact:
         raise HTTPException(status_code=404, detail="Artifact not found")
+    if not artifact.activated:
+        raise HTTPException(status_code=404, detail="Artifact is not active")
     allowed = json.loads(artifact.allowed_agent_ids or "[]")
     if agent.id not in allowed:
         raise HTTPException(status_code=403, detail="Agent is not authorized for this artifact")

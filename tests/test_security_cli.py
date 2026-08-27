@@ -13,6 +13,7 @@ from hermetic_club.services.security import (
     seal,
     unseal,
     valid_forgejo_origin,
+    valid_webhook_url,
 )
 
 
@@ -42,8 +43,28 @@ def test_forgejo_signature_uses_constant_time_comparable_value():
 def test_forgejo_origin_allowlist_and_json_array():
     assert valid_forgejo_origin("https://forgejo.example/mo/repo", ["https://forgejo.example"])
     assert not valid_forgejo_origin("https://evil.example/mo/repo", ["https://forgejo.example"])
+    assert not valid_forgejo_origin("https://forgejo.example/mo/repo", [])
     assert not valid_forgejo_origin("file:///etc/passwd", ["https://forgejo.example"])
+    assert valid_webhook_url("http://100.77.74.22:8766/hc-webhook/pi", ["100.77.74.22"])
+    assert not valid_webhook_url("http://attacker.example/hc-webhook/pi", ["100.77.74.22"])
+    assert not valid_webhook_url("http://100.77.74.22:8766/hc-webhook/pi", [])
     assert json_array('["skill", "project"]') == '["skill", "project"]'
+
+
+def test_privileged_auth_fails_closed_without_server_secret(monkeypatch):
+    from hermetic_club.config import Config
+    from hermetic_club.routes.admin import verify_user
+    from hermetic_club.routes.user import _check_user_auth
+
+    monkeypatch.setattr(Config, "load", lambda: Config({"secret_key": ""}))
+    with pytest.raises(Exception) as admin_error:
+        import asyncio
+        asyncio.run(verify_user(""))
+    assert getattr(admin_error.value, "status_code", None) == 503
+
+    with pytest.raises(Exception) as user_error:
+        _check_user_auth("")
+    assert getattr(user_error.value, "status_code", None) == 503
 
 
 def test_cli_stores_profile_key_with_owner_only_permissions(tmp_path, monkeypatch):

@@ -28,18 +28,17 @@ WEBHOOK_ALLOWED_HOSTS = {
 
 
 def _webhook_settings() -> tuple[str, set[str]]:
-    """Load webhook auth and destination policy without breaking posts."""
-    secret = WEBHOOK_SECRET
-    hosts = set(WEBHOOK_ALLOWED_HOSTS)
-    if not secret or not hosts:
-        try:
-            from ..config import Config
-            cfg = Config.load()
-            secret = secret or cfg.webhook_secret
-            hosts |= set(cfg.webhook_allowed_hosts)
-        except Exception:
-            log.exception("Unable to load webhook configuration")
-    return secret, hosts
+    """Load webhook auth and destination policy without merging sources."""
+    try:
+        from ..config import Config
+
+        cfg = Config.load()
+        secret = WEBHOOK_SECRET or cfg.webhook_secret
+        hosts = set(WEBHOOK_ALLOWED_HOSTS) or set(cfg.webhook_allowed_hosts)
+        return secret, hosts
+    except Exception:
+        log.exception("Unable to load webhook configuration")
+        return WEBHOOK_SECRET, set(WEBHOOK_ALLOWED_HOSTS)
 
 
 def _allowed_webhook_url(url: str, allowed_hosts: set[str]) -> bool:

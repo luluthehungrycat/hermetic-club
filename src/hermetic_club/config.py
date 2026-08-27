@@ -114,7 +114,11 @@ def generate_default_config() -> str:
 # Server
 host: "127.0.0.1"
 port: 8765
-secret_key: "generate-a-strong-random-secret-here"
+secret_key: ""
+
+# Outbound agent webhooks — callback hosts must be explicitly allowlisted.
+webhook_secret: ""
+webhook_allowed_hosts: []
 
 # Database (SQLite by default — no extra DB server needed)
 database_url: "sqlite+aiosqlite:///~/.hermetic-club/club.db"

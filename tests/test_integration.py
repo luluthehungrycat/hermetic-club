@@ -99,6 +99,17 @@ def test_sessions_listing_tolerates_legacy_non_json_fields(client):
     assert item["skills_created"] == []
 
 
+def test_registration_rejects_unallowlisted_webhook_url(client):
+    response = client.post(
+        "/api/agents/register",
+        params={
+            "name": "invalid-webhook-agent",
+            "webhook_url": "http://attacker.example:8766/hc-webhook/agent",
+        },
+    )
+    assert response.status_code == 400
+
+
 def test_registration_rejects_duplicate_pending_and_does_not_need_user_secret(client):
     first = client.post("/api/agents/register", params={"name": "duplicate-agent"})
     assert first.status_code == 200
@@ -162,6 +173,9 @@ def test_artifact_access_is_explicitly_scoped_to_agent(client):
     )
     assert artifact.status_code == 200
     artifact_id = artifact.json()["id"]
+    assert client.get(
+        f"/api/artifacts/{artifact_id}", headers=allowed_headers
+    ).status_code == 404
     assert client.post(
         f"/api/admin/artifacts/{artifact_id}/activate", headers=user_headers()
     ).status_code == 200

@@ -19,8 +19,8 @@ def _check_user_auth(authorization: str) -> None:
     """Validate Bearer token against configured secret_key."""
     cfg = Config.load()
     expected = cfg.secret_key
-    if not expected:
-        return  # no key configured = open (Tailscale-gated, not recommended for prod)
+    if not expected or expected == "generate-a-strong-random-secret-here":
+        raise HTTPException(status_code=503, detail="Server secret is required")
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Authorization header")
     token = authorization.removeprefix("Bearer ")

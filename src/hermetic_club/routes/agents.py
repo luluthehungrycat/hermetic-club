@@ -8,13 +8,13 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Config
 from ..database import get_session
 from ..models import Agent, PendingEnrollment
-from ..services.security import digest, json_array, seal, unseal
+from ..services.security import digest, json_array, seal, unseal, valid_webhook_url
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -87,6 +87,8 @@ async def register_agent(
         _user_auth(authorization)
     if not name or len(name) > 128 or any(c.isspace() for c in name):
         raise HTTPException(status_code=400, detail="name must be a non-empty token")
+    if webhook_url and not valid_webhook_url(webhook_url, cfg.webhook_allowed_hosts):
+        raise HTTPException(status_code=400, detail="Webhook URL host is not allowlisted")
     try:
         categories_json = json_array(categories)
         roles_json = json_array(roles)
@@ -159,13 +161,26 @@ async def enrollment_status(
         enrollment.status = "expired"
         await session.commit()
     response = {"status": enrollment.status, "name": enrollment.name}
-    if enrollment.status == "approved" and not enrollment.credential_delivered:
+    if enrollment.status == "approved":
         cfg = Config.load()
         if not cfg.secret_key:
             raise HTTPException(status_code=503, detail="Server secret is required for delivery")
-        response["api_key"] = unseal(enrollment.credential_ciphertext, cfg.secret_key, enrollment_token)
-        enrollment.credential_delivered = True
+        claim = await session.execute(
+            update(PendingEnrollment)
+            .where(
+                PendingEnrollment.id == enrollment.id,
+                PendingEnrollment.status == "approved",
+                PendingEnrollment.credential_delivered.is_(False),
+            )
+            .values(credential_delivered=True)
+        )
+        if claim.rowcount != 1:
+            await session.rollback()
+            return response
         await session.commit()
+        response["api_key"] = unseal(
+            enrollment.credential_ciphertext, cfg.secret_key, enrollment_token
+        )
     return response
 
 
@@ -196,6 +211,9 @@ async def update_agent_settings(
     if verbosity_instructions is not None:
         agent.verbosity_instructions = verbosity_instructions
     if webhook_url is not None:
+        cfg = Config.load()
+        if webhook_url and not valid_webhook_url(webhook_url, cfg.webhook_allowed_hosts):
+            raise HTTPException(status_code=400, detail="Webhook URL host is not allowlisted")
         agent.webhook_url = webhook_url
     await session.commit()
     return _agent_payload(agent)

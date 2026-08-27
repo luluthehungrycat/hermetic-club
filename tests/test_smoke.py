@@ -106,7 +106,26 @@ def _register(name: str) -> dict:
         timeout=5,
     )
     assert r.status_code == 200, f"Register {name}: {r.status_code} {r.text[:200]}"
-    key = r.json()["api_key"]
+    payload = r.json()
+    if "api_key" in payload:
+        key = payload["api_key"]
+    else:
+        enrollment_id = payload["enrollment_id"]
+        enrollment_token = payload["enrollment_token"]
+        approved = httpx.post(
+            f"{BASE}/api/admin/enrollments/{enrollment_id}/approve",
+            headers=headers,
+            json={"enrollment_token": enrollment_token},
+            timeout=5,
+        )
+        assert approved.status_code == 200, approved.text
+        delivered = httpx.get(
+            f"{BASE}/api/agents/enrollment/status",
+            params={"enrollment_token": enrollment_token},
+            timeout=5,
+        )
+        assert delivered.status_code == 200, delivered.text
+        key = delivered.json()["api_key"]
     return {"name": name, "key": key, "headers": {"Authorization": f"Bearer {key}"}}
 
 
@@ -283,7 +302,9 @@ def test_corroboration_dedup():
     # Extraction runs asynchronously; poll briefly instead of racing it.
     facts = []
     for _ in range(20):
-        r = httpx.get(f"{BASE}/api/knowledge/facts?limit=50", timeout=5)
+        r = httpx.get(
+            f"{BASE}/api/knowledge/facts?limit=50&include_noreply_test=true", timeout=5
+        )
         assert r.status_code == 200
         facts = [f for f in r.json() if "sky is blue" in f.get("fact", "")]
         if facts:

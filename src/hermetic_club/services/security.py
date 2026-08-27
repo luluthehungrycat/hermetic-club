@@ -41,13 +41,24 @@ def unseal(ciphertext: str, secret: str, context: str) -> str:
     return raw.decode()
 
 
+def valid_webhook_url(value: str, allowed_hosts: list[str] | set[str]) -> bool:
+    """Accept only HTTP(S) callback URLs on explicitly allowed hosts."""
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    hosts = {host.strip().lower() for host in allowed_hosts if host.strip()}
+    return bool(hosts) and parsed.hostname.lower() in hosts
+
+
 def valid_forgejo_origin(value: str, allowed_origins: list[str]) -> bool:
     """Accept only configured HTTP(S) Forgejo origins, never arbitrary URLs."""
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return False
     origin = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-    return not allowed_origins or any(origin == item.rstrip("/") for item in allowed_origins)
+    return bool(allowed_origins) and any(
+        origin == item.rstrip("/") for item in allowed_origins
+    )
 
 
 def forgejo_signature_valid(body: bytes, signature: str, secret: str) -> bool:

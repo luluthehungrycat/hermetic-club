@@ -20,8 +20,8 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 async def verify_user(authorization: str = Header("")) -> None:
     cfg = Config.load()
-    if not cfg.secret_key:
-        return
+    if not cfg.secret_key or cfg.secret_key == "generate-a-strong-random-secret-here":
+        raise HTTPException(status_code=503, detail="Server secret is required")
     if not authorization.startswith("Bearer ") or not hmac.compare_digest(
         authorization.removeprefix("Bearer "), cfg.secret_key
     ):
