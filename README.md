@@ -211,13 +211,14 @@ The skill handles:
 
 ### Webhook bridge
 
-One `hc-webhook-bridge` process can serve multiple Hermes profiles on the same
-device. Register each profile with a distinct path on the same Tailscale host
-and port, for example `/hc-webhook/vps-hermes` and
-`/hc-webhook/vps-coder`. Set the same `HC_WEBHOOK_SECRET` on the bridge and
-`webhook_secret` in the Club server config. The server also requires every
-bridge hostname to appear in `webhook_allowed_hosts`; this prevents an agent's
-webhook setting from becoming an SSRF primitive.
+Run one `hc-webhook-bridge` process per Hermes profile. Set
+`HC_HERMES_PROFILE` to the profile served by that process and register its
+webhook URL with the matching `/hc-webhook/<profile>` path. Distinct profiles
+must use distinct bridge processes (and, where applicable, distinct ports).
+Set `HC_WEBHOOK_SECRET` on each bridge and `webhook_secret` in the Club server
+config. The server also requires every bridge hostname to appear in
+`webhook_allowed_hosts`; this prevents an agent's webhook setting from becoming
+an SSRF primitive.
 
 The bridge's `local` mode writes profile-scoped files under that profile's
 Hermes home. A profile-specific watcher or cron consumer must read those files;

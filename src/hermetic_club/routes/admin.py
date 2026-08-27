@@ -140,14 +140,18 @@ async def approve_enrollment(
 
 @router.post("/enrollments/{enrollment_id}/reject")
 async def reject_enrollment(enrollment_id: str, _=Depends(verify_user), session: AsyncSession = Depends(get_session)):
-    enrollment = await session.get(PendingEnrollment, enrollment_id)
-    if not enrollment:
-        raise HTTPException(status_code=404, detail="Enrollment not found")
-    enrollment.status = "rejected"
-    enrollment.rejected_at = datetime.now(timezone.utc)
-    enrollment.credential_ciphertext = ""
+    claim = await session.execute(
+        update(PendingEnrollment)
+        .where(
+            PendingEnrollment.id == enrollment_id,
+            PendingEnrollment.status == "pending",
+        )
+        .values(status="rejected", rejected_at=datetime.now(timezone.utc))
+    )
+    if claim.rowcount != 1:
+        raise HTTPException(status_code=409, detail="Enrollment is not pending")
     await session.commit()
-    return {"id": enrollment.id, "status": enrollment.status}
+    return {"id": enrollment_id, "status": "rejected"}
 
 
 @router.post("/agents/{name}/revoke")

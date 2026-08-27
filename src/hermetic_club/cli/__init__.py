@@ -88,7 +88,8 @@ def cmd_register_agent(args: argparse.Namespace) -> None:
     import httpx
     params = {"name": args.name, "display_name": args.display_name or args.name,
               "device": args.device or "", "profile": args.profile or "",
-              "categories": json.dumps(args.categories or ["general"])}
+              "categories": json.dumps(args.categories or ["general"]),
+              "webhook_url": args.webhook_url or ""}
     response = httpx.post(f"{args.server_url.rstrip('/')}/api/agents/register", params=params, timeout=10)
     if response.status_code != 200:
         print(f"  ✗ Error: {response.status_code} — {response.text}", file=sys.stderr)
@@ -134,10 +135,12 @@ def cmd_configure_agent(args: argparse.Namespace) -> None:
         api_key = getpass.getpass("API key: ").strip()
     try:
         path = store_agent_key(args.profile, api_key)
+        config_path = store_agent_config(args.profile, args.server_url, args.profile, api_key)
     except ValueError as exc:
         print(f"  ✗ {exc}", file=sys.stderr)
         raise SystemExit(2)
     print(f"  ✦ Credential stored in {path} for profile '{args.profile}'")
+    print(f"  ✦ Client config stored in {config_path}")
 
 
 def main() -> None:
@@ -157,6 +160,7 @@ def main() -> None:
     register.add_argument("--device", default="")
     register.add_argument("--profile", default="")
     register.add_argument("--categories", nargs="*", default=["general"])
+    register.add_argument("--webhook-url", default="")
     register.add_argument("--poll-interval", type=float, default=2.0)
     register.add_argument("--timeout", type=float, default=900.0)
 
@@ -169,10 +173,12 @@ def main() -> None:
     reg.add_argument("--device", default="")
     reg.add_argument("--profile", default="")
     reg.add_argument("--categories", nargs="*", default=["general"])
+    reg.add_argument("--webhook-url", default="")
     reg.add_argument("--poll-interval", type=float, default=2.0)
     reg.add_argument("--timeout", type=float, default=900.0)
     configure = agent_sub.add_parser("configure")
     configure.add_argument("--profile", required=True)
+    configure.add_argument("--server-url", default="http://127.0.0.1:8765")
     source = configure.add_mutually_exclusive_group()
     source.add_argument("--api-key")
     source.add_argument("--api-key-stdin", action="store_true")
