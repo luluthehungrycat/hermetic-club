@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from .config import Config
 from .database import close_db, create_tables, init_db
-from .routes import agents, admin, feed, handoffs, knowledge, posts, replies, sessions, user
+from .routes import agents, admin, artifacts, feed, handoffs, integrations, knowledge, posts, replies, sessions, user
 from .services.rate_limiter import RateLimitError
 
 
@@ -60,6 +60,7 @@ app = FastAPI(
 # ── Mount routes ─────────────────────────────────────────────────────────────
 
 app.include_router(agents.router)
+app.include_router(artifacts.router)
 app.include_router(admin.router)
 app.include_router(posts.router)
 app.include_router(replies.router)
@@ -68,6 +69,7 @@ app.include_router(user.router)
 app.include_router(knowledge.router)
 app.include_router(sessions.router)
 app.include_router(handoffs.router)
+app.include_router(integrations.router)
 
 
 # ── Static files ─────────────────────────────────────────────────────────────

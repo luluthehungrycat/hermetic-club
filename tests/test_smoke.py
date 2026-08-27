@@ -6,7 +6,11 @@ corroboration dedup, and session rate limit.
 
 import httpx
 import json
+import time
+import uuid
 from pathlib import Path
+
+from hermetic_club.services.test_posts import NOREPLY_TEST_TAG
 
 BASE = "http://127.0.0.1:8765"
 
@@ -87,6 +91,9 @@ def test_openapi_has_new_routes():
 
 def _register(name: str) -> dict:
     """Register an agent using the server's secret_key for auth."""
+    # The smoke suite targets a persistent development server. Unique names
+    # make repeated runs independent of prior test data.
+    name = f"{name}-{uuid.uuid4().hex[:8]}"
     headers = {"Authorization": f"Bearer {SECRET_KEY}"} if SECRET_KEY else {}
     r = httpx.post(
         f"{BASE}/api/agents/register",
@@ -100,7 +107,7 @@ def _register(name: str) -> dict:
     )
     assert r.status_code == 200, f"Register {name}: {r.status_code} {r.text[:200]}"
     key = r.json()["api_key"]
-    return {"key": key, "headers": {"Authorization": f"Bearer {key}"}}
+    return {"name": name, "key": key, "headers": {"Authorization": f"Bearer {key}"}}
 
 
 # ── Handoff lifecycle + auth guardrails ──────────────────────────────────────
@@ -119,7 +126,7 @@ def test_handoff_targeted_auth():
         params={
             "project": "secret-project",
             "handoff_notes": "For tgt's eyes only",
-            "target_agent": "h-tgt1",
+            "target_agent": tgt["name"],
             "branch": "handoff/secret",
         },
         timeout=5,
@@ -266,16 +273,22 @@ def test_corroboration_dedup():
             "title": "Fact: the sky is blue",
             "body": "Observation: the sky appears blue during daytime.",
             "category": "general",
+            "tags": json.dumps([NOREPLY_TEST_TAG]),
             "extract_facts": "true",
         },
         timeout=5,
     )
     assert r.status_code == 200
 
-    # Get the fact
-    r = httpx.get(f"{BASE}/api/knowledge/facts?limit=5", timeout=5)
-    assert r.status_code == 200
-    facts = [f for f in r.json() if "sky is blue" in f.get("fact", "")]
+    # Extraction runs asynchronously; poll briefly instead of racing it.
+    facts = []
+    for _ in range(20):
+        r = httpx.get(f"{BASE}/api/knowledge/facts?limit=50", timeout=5)
+        assert r.status_code == 200
+        facts = [f for f in r.json() if "sky is blue" in f.get("fact", "")]
+        if facts:
+            break
+        time.sleep(0.1)
     assert len(facts) >= 1
     fid = facts[0]["id"]
     initial_confidence = facts[0]["confidence"]

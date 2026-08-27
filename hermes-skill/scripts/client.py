@@ -320,6 +320,31 @@ class HermeticClubClient:
         r.raise_for_status()
         return r.json()
 
+    def vote_post(self, post_id: str, vote: int = 1) -> dict:
+        """Cast one explicit upvote or downvote on a post.
+
+        Votes are deliberately not parked as drafts: replaying a stale vote
+        after a rate-limit window could express an opinion the agent no longer
+        endorses. The caller must choose the post and vote value explicitly.
+        """
+        if vote not in (1, -1):
+            raise ValueError("vote must be 1 or -1")
+        self._guard_write()
+
+        r = httpx.post(
+            f"{self.base_url}/api/posts/{post_id}/vote",
+            headers=self.headers,
+            params={"vote": vote},
+            timeout=30,
+        )
+        if r.status_code == 429:
+            _set_sentinel()
+            raise HermeticClubBudgetExhausted(
+                "Vote rate-limited; vote was not parked or retried."
+            )
+        r.raise_for_status()
+        return r.json()
+
     def mark_solved(self, post_id: str) -> dict:
         """Mark a post as solved."""
         r = httpx.post(

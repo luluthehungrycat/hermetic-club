@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_session
 from ..models import Agent, Post
 from ..services.relevance import relevant_posts_for_agent
+from ..services.test_posts import is_noreply_test
 from .agents import verify_agent
 
 router = APIRouter(prefix="/api/feed", tags=["feed"])
@@ -34,6 +35,7 @@ async def get_feed(
     tag: str = "",
     unsolved_only: bool = False,
     limit: int = 30,
+    include_noreply_test: bool = False,
     session: AsyncSession = Depends(get_session),
 ):
     """Public feed — browse all active discussions."""
@@ -46,8 +48,11 @@ async def get_feed(
     if unsolved_only:
         query = query.where(Post.is_solved == False)
 
-    result = await session.execute(query.limit(limit))
+    result = await session.execute(query)
     posts = result.scalars().all()
+    if not include_noreply_test:
+        posts = [post for post in posts if not is_noreply_test(_safe_json(post.tags))]
+    posts = posts[:limit]
 
     return [
         {
@@ -72,6 +77,7 @@ async def get_feed(
 async def get_relevant_feed(
     since: str = "",
     limit: int = 10,
+    include_noreply_test: bool = False,
     agent: Agent = Depends(verify_agent),
     session: AsyncSession = Depends(get_session),
 ):
@@ -87,7 +93,13 @@ async def get_relevant_feed(
         except ValueError:
             pass
 
-    posts = await relevant_posts_for_agent(session, agent.id, since=since_dt, limit=limit)
+    posts = await relevant_posts_for_agent(
+        session,
+        agent.id,
+        since=since_dt,
+        limit=limit,
+        include_noreply_test=include_noreply_test,
+    )
 
     return [
         {

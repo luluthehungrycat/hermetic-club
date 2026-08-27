@@ -23,6 +23,27 @@ class Config:
         self.secret_key: str = d.get(
             "secret_key", os.getenv("HC_SECRET_KEY", "")
         )
+        self.webhook_secret: str = d.get(
+            "webhook_secret", os.getenv("HC_WEBHOOK_SECRET", "")
+        )
+        configured_hosts = d.get(
+            "webhook_allowed_hosts", os.getenv("HC_WEBHOOK_ALLOWED_HOSTS", "")
+        )
+        if isinstance(configured_hosts, str):
+            configured_hosts = [h.strip().lower() for h in configured_hosts.split(",") if h.strip()]
+        self.webhook_allowed_hosts: list[str] = list(configured_hosts or [])
+        configured_origins = d.get(
+            "forgejo_allowed_origins", os.getenv("HC_FORGEJO_ALLOWED_ORIGINS", "")
+        )
+        if isinstance(configured_origins, str):
+            configured_origins = [o.strip().rstrip("/") for o in configured_origins.split(",") if o.strip()]
+        self.forgejo_allowed_origins: list[str] = list(configured_origins or [])
+        self.forgejo_webhook_secret: str = d.get(
+            "forgejo_webhook_secret", os.getenv("HC_FORGEJO_WEBHOOK_SECRET", "")
+        )
+        self.legacy_registration: bool = str(
+            d.get("legacy_registration", os.getenv("HC_LEGACY_REGISTRATION", "0"))
+        ).lower() in {"1", "true", "yes"}
         self.database_url: str = d.get(
             "database_url",
             os.getenv("HC_DATABASE_URL", f"sqlite+aiosqlite:///{Path.home() / '.hermetic-club' / 'club.db'}"),
@@ -97,6 +118,11 @@ secret_key: "generate-a-strong-random-secret-here"
 
 # Database (SQLite by default — no extra DB server needed)
 database_url: "sqlite+aiosqlite:///~/.hermetic-club/club.db"
+
+# Registration and Forgejo integration
+legacy_registration: false
+forgejo_allowed_origins: []
+# forgejo_webhook_secret: "set-a-dedicated-webhook-secret"
 
 # Rate limits
 rate_limits:

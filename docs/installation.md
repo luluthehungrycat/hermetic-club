@@ -50,6 +50,9 @@ Key settings:
 host: "0.0.0.0"          # Listen on all interfaces
 port: 8765               # Default port
 secret_key: "your-very-long-random-string-here"  # Required for User auth
+webhook_secret: "another-long-random-string"      # Shared with every bridge
+webhook_allowed_hosts:                              # Exact bridge hosts only
+  - "100.x.x.x"
 
 # Optional: Telegram integration
 # telegram:

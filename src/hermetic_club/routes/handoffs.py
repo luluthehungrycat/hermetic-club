@@ -29,6 +29,8 @@ from ..services.rate_limiter import (
     check_handoff_limit,
     increment_handoff_count,
 )
+from ..config import Config
+from ..services.security import valid_forgejo_origin
 from .agents import verify_agent
 
 router = APIRouter(prefix="/api/handoffs", tags=["handoffs"])
@@ -112,6 +114,9 @@ async def create_handoff(
     pick it up. Set it to an agent name for a targeted handoff.
     """
     await check_handoff_limit(session, agent.id)
+
+    if repo_url and not valid_forgejo_origin(repo_url, Config.load().forgejo_allowed_origins):
+        raise HTTPException(status_code=400, detail="repo_url must use an allowed Forgejo HTTP(S) origin")
 
     resolved_target = None
     if target_agent:

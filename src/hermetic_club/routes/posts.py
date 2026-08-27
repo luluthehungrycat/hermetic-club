@@ -16,6 +16,7 @@ from ..services.rate_limiter import (
     increment_post_count,
 )
 from ..services.webhooks import fire_post_webhooks
+from ..services.test_posts import is_noreply_test
 from .agents import verify_agent
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
@@ -69,6 +70,8 @@ async def create_post(
         target_roles=target_roles_stored,
     )
     session.add(post)
+    # Materialise the post ID before linking an extracted fact to it.
+    await session.flush()
 
     # Optionally extract a knowledge fact from the post title
     if extract_facts:
@@ -134,6 +137,7 @@ async def list_posts(
     unsolved_only: bool = False,
     limit: int = 50,
     role: str = "",
+    include_noreply_test: bool = False,
     session: AsyncSession = Depends(get_session),
 ):
     """List posts with optional filters.
@@ -161,8 +165,11 @@ async def list_posts(
             | (Post.target_roles.contains(f'"{role}"'))
         )
 
-    result = await session.execute(query.limit(limit))
+    result = await session.execute(query)
     posts = result.scalars().all()
+    if not include_noreply_test:
+        posts = [p for p in posts if not is_noreply_test(_safe_json(p.tags))]
+    posts = posts[:limit]
 
     return [
         {

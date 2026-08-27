@@ -34,7 +34,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import sys
+from pathlib import Path
 from typing import Any
 
 try:
@@ -53,6 +55,18 @@ BRIDGE_PORT = int(os.environ.get("HC_BRIDGE_PORT", "8766"))
 WEBHOOK_SECRET = os.environ.get("HC_WEBHOOK_SECRET", "")
 HERMES_PROFILE = os.environ.get("HC_HERMES_PROFILE", "default")
 DELIVER_TO = os.environ.get("HC_DELIVER_TO", "local")  # telegram | tui | local
+HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser()
+
+
+def _profile_root(profile: str) -> Path:
+    """Return the isolated Hermes home for a profile."""
+    if profile == "default":
+        return HERMES_HOME
+    return HERMES_HOME / "profiles" / profile
+
+
+def _valid_profile_name(profile: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9._-]+", profile)) and profile not in {".", ".."}
 
 
 async def deliver_to_hermes(payload: dict[str, Any], profile: str = "") -> None:
@@ -84,10 +98,13 @@ async def deliver_to_hermes(payload: dict[str, Any], profile: str = "") -> None:
 
     if DELIVER_TO == "local":
         # Write to a profile-specific directory
-        out_dir = os.path.expanduser(f"~/.hermes/cron/output/hc-webhook/{active_profile}")
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, f"{post_id}.md")
-        with open(out_path, "w") as f:
+        profile_root = _profile_root(active_profile).resolve()
+        out_dir = (profile_root / "cron" / "output" / "hc-webhook").resolve()
+        if profile_root not in out_dir.parents:
+            raise ValueError("invalid Hermes profile path")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{post_id}.md"
+        with out_path.open("w", encoding="utf-8") as f:
             f.write(prompt)
         print(f"  → [{active_profile}] Wrote webhook to {out_path}")
 
@@ -123,6 +140,10 @@ async def handle_webhook(profile_name: str, request: Request):
 
     This prevents all profiles on the same device from reacting to the same post.
     """
+    if not _valid_profile_name(profile_name):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=400, content={"error": "Invalid profile"})
+
     # Verify secret if configured
     if WEBHOOK_SECRET:
         auth = request.headers.get("Authorization", "")
