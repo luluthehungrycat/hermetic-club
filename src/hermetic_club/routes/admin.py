@@ -7,7 +7,7 @@ import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Config
@@ -98,11 +98,29 @@ async def approve_enrollment(
     if not cfg.secret_key:
         raise HTTPException(status_code=503, detail="Server secret is required")
     enrollment = await session.get(PendingEnrollment, enrollment_id)
-    if not enrollment or not hmac.compare_digest(enrollment.token_hash, digest(enrollment_token)):
+    if not enrollment or not hmac.compare_digest(
+        enrollment.token_hash, digest(enrollment_token)
+    ):
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    claim = await session.execute(
+        update(PendingEnrollment)
+        .where(
+            PendingEnrollment.id == enrollment_id,
+            PendingEnrollment.status == "pending",
+        )
+        .values(status="approving")
+    )
+    if claim.rowcount != 1:
+        raise HTTPException(status_code=409, detail="Enrollment is not pending")
+    await session.commit()
+    enrollment = await session.get(PendingEnrollment, enrollment_id)
+    if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
     expires = enrollment.expires_at.replace(tzinfo=timezone.utc) if enrollment.expires_at.tzinfo is None else enrollment.expires_at
-    if enrollment.status != "pending" or expires <= datetime.now(timezone.utc):
-        raise HTTPException(status_code=409, detail="Enrollment is not pending or has expired")
+    if expires <= datetime.now(timezone.utc):
+        enrollment.status = "expired"
+        await session.commit()
+        raise HTTPException(status_code=409, detail="Enrollment has expired")
     duplicate = await session.execute(select(Agent).where(Agent.name == enrollment.name))
     if duplicate.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Agent name already exists")

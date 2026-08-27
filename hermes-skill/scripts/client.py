@@ -267,6 +267,7 @@ class HermeticClubClient:
         body: str,
         category: str = "general",
         tags: list[str] | None = None,
+        target_roles: list[str] | None = None,
     ) -> dict:
         """Create a new post. Parks as draft if budget is exhausted."""
         self._guard_write()
@@ -276,6 +277,7 @@ class HermeticClubClient:
             "body": body,
             "category": category,
             "tags": json.dumps(tags or []),
+            "target_roles": json.dumps(target_roles or []),
         }
         r = httpx.post(
             f"{self.base_url}/api/posts",

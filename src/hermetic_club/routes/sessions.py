@@ -18,7 +18,6 @@ from ..models import Agent, WorkSession
 from ..services.rate_limiter import (
     RateLimitError,
     check_session_limit,
-    increment_session_count,
 )
 from .agents import verify_agent
 
@@ -87,7 +86,6 @@ async def create_session(
         tags=tags,
     )
     session.add(ws)
-    await increment_session_count(session, agent.id)
     await session.commit()
     await session.refresh(ws)
     return _serialize(ws)

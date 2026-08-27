@@ -27,7 +27,6 @@ from ..models import Agent, Handoff, HandoffEvent
 from ..services.rate_limiter import (
     RateLimitError,
     check_handoff_limit,
-    increment_handoff_count,
 )
 from ..config import Config
 from ..services.security import valid_forgejo_origin
@@ -148,7 +147,6 @@ async def create_handoff(
         session, handoff.id, "created", agent.id,
         f"Handoff created for project '{project}'",
     )
-    await increment_handoff_count(session, agent.id)
     await session.commit()
 
     # Re-fetch with relationships loaded

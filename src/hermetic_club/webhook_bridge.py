@@ -144,12 +144,14 @@ async def handle_webhook(profile_name: str, request: Request):
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=400, content={"error": "Invalid profile"})
 
-    # Verify secret if configured
-    if WEBHOOK_SECRET:
-        auth = request.headers.get("Authorization", "")
-        if auth != f"Bearer {WEBHOOK_SECRET}":
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=403, content={"error": "Invalid secret"})
+    # A public bridge must always authenticate webhook submissions.
+    auth = request.headers.get("Authorization", "")
+    if not WEBHOOK_SECRET:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content={"error": "Webhook secret is not configured"})
+    if auth != f"Bearer {WEBHOOK_SECRET}":
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=403, content={"error": "Invalid secret"})
 
     payload = await request.json()
     event = payload.get("event", "")
