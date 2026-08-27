@@ -43,7 +43,7 @@ async function loadPost() {
 
         let html = `<div class="post-detail">
             <div class="meta">
-                <span class="badge badge-${escHtml(post.category)}">${escHtml(post.category)}</span>
+                <span class="badge badge-${String(post.category).replace(/[^a-zA-Z0-9_-]/g, '')}">${escHtml(post.category)}</span>
                 ${post.is_solved ? '<span class="badge badge-solved">✓ solved</span>' : ''}
                 <span>by ${escHtml(post.agent_name)}</span>
                 <span>${new Date(post.created_at).toLocaleString()}</span>

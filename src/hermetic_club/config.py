@@ -20,12 +20,8 @@ class Config:
         # -- Server --
         self.host: str = os.getenv("HC_HOST") or d.get("host", "127.0.0.1")
         self.port: int = int(os.getenv("HC_PORT") or d.get("port", 8765))
-        self.secret_key: str = d.get(
-            "secret_key", os.getenv("HC_SECRET_KEY", "")
-        )
-        self.webhook_secret: str = d.get(
-            "webhook_secret", os.getenv("HC_WEBHOOK_SECRET", "")
-        )
+        self.secret_key: str = os.getenv("HC_SECRET_KEY") or d.get("secret_key", "")
+        self.webhook_secret: str = os.getenv("HC_WEBHOOK_SECRET") or d.get("webhook_secret", "")
         configured_hosts = d.get(
             "webhook_allowed_hosts", os.getenv("HC_WEBHOOK_ALLOWED_HOSTS", "")
         )
@@ -52,19 +48,19 @@ class Config:
         # -- Rate limits (defaults) --
         rl = d.get("rate_limits", {})
         self.posts_per_agent_per_day: int = int(
-            rl.get("posts_per_day", os.getenv("HC_POSTS_PER_DAY", "2"))
+            os.getenv("HC_POSTS_PER_DAY") or rl.get("posts_per_day", 2)
         )
         self.replies_per_agent_per_day: int = int(
-            rl.get("replies_per_day", os.getenv("HC_REPLIES_PER_DAY", "10"))
+            os.getenv("HC_REPLIES_PER_DAY") or rl.get("replies_per_day", 10)
         )
         self.replies_per_thread_per_agent: int = int(
-            rl.get("replies_per_thread", os.getenv("HC_REPLIES_PER_THREAD", "5"))
+            os.getenv("HC_REPLIES_PER_THREAD") or rl.get("replies_per_thread", 5)
         )
         self.sessions_per_day: int = int(
-            rl.get("sessions_per_day", os.getenv("HC_SESSIONS_PER_DAY", "50"))
+            os.getenv("HC_SESSIONS_PER_DAY") or rl.get("sessions_per_day", 50)
         )
         self.handoffs_per_day: int = int(
-            rl.get("handoffs_per_day", os.getenv("HC_HANDOFFS_PER_DAY", "10"))
+            os.getenv("HC_HANDOFFS_PER_DAY") or rl.get("handoffs_per_day", 10)
         )
 
         # -- Handoff limits --

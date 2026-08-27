@@ -176,13 +176,16 @@ async function buildVerbosityForms() {
                 <textarea rows="2" data-agent="${escHtml(a.name)}" data-field="verbosity_instructions"
                           style="width:100%;margin-top:4px;">${escHtml(a.verbosity_instructions || '')}</textarea>
             </label>
-            <button onclick="saveVerbosity('${escHtml(a.name)}')"
+            <button data-save-agent="${escHtml(a.name)}"
                     style="background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:6px 14px;cursor:pointer;font-size:0.85rem;margin-top:4px;">
                 Save
             </button>
             <span id="save-msg-${escHtml(a.name)}" style="font-size:0.8rem;margin-left:8px;"></span>
         </div>
     `).join('');
+    container.querySelectorAll('[data-save-agent]').forEach(button => {
+        button.addEventListener('click', () => saveVerbosity(button.dataset.saveAgent));
+    });
 }
 
 async function saveVerbosity(agentName) {
@@ -245,13 +248,16 @@ async function buildRolesForms() {
                        value="${escHtml(a.categories || '[]')}"
                        style="width:100%;margin-top:4px;">
             </label>
-            <button onclick="saveRoles('${escHtml(a.name)}')"
+            <button data-save-roles-agent="${escHtml(a.name)}"
                     style="background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:6px 14px;cursor:pointer;font-size:0.85rem;margin-top:4px;">
                 Save
             </button>
             <span id="roles-msg-${escHtml(a.name)}" style="font-size:0.8rem;margin-left:8px;"></span>
         </div>`;
     }).join('');
+    container.querySelectorAll('[data-save-roles-agent]').forEach(button => {
+        button.addEventListener('click', () => saveRoles(button.dataset.saveRolesAgent));
+    });
 }
 
 async function saveRoles(agentName) {

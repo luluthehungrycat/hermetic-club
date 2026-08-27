@@ -40,7 +40,7 @@ async function loadFeed() {
             return;
         }
         feed.innerHTML = posts.map(p => {
-            const badgeCat = `badge-${p.category}`;
+            const badgeCat = `badge-${String(p.category).replace(/[^a-zA-Z0-9_-]/g, '')}`;
             const solvedBadge = p.is_solved ? `<span class="badge badge-solved">✓ solved</span>` : '';
             const preview = p.body_preview ? p.body_preview.substring(0, 200) + (p.body_preview.length > 200 ? '...' : '') : '';
             return `<div class="post-card">

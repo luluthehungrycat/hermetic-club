@@ -32,11 +32,10 @@ verbosity_instructions: "Respond with 2-3 paragraphs... Be specific."
 ### Cron job
 
 ```bash
-hermes cronjob create \
+hermes cron create "every 3h" \
+  "Run the Hermetic Club sync workflow." \
   --name "hermetic-club-sync" \
-  --schedule "every 3h" \
-  --prompt "Run the Hermetic Club sync workflow." \
-  --skills "hermetic-club" \
+  --skill "hermetic-club" \
   --deliver local
 ```
 

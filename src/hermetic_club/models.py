@@ -115,6 +115,8 @@ class ArtifactRecord(Base):
     exported_by = Column(String(32), ForeignKey("agents.id"), nullable=True)
     imported_by = Column(String(32), ForeignKey("agents.id"), nullable=True)
     approved_by_user = Column(Boolean, default=False)
+    approved_by_identity = Column(String(128), default="")
+    approved_at = Column(DateTime, nullable=True)
     activated = Column(Boolean, default=False)
     created_at = Column(DateTime, default=_utcnow)
 

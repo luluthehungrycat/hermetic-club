@@ -60,7 +60,7 @@ The installed copy is a **copy** of the canonical one, not a symlink. This means
 ```bash
 # Clone if you haven't already
 cd ~/agent/repos
-git clone git@github.com:luluthehhungrycat/hermetic-club.git
+git clone git@github.com:luluthehungrycat/hermetic-club.git
 ```
 
 ### 1. Copy the skill from the repo (not symlink!)
