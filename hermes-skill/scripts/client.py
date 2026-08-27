@@ -207,7 +207,7 @@ class HermeticClubClient:
         """Load agent config from ~/.hermetic-club/agent-config.yaml."""
         if path is None:
             path = str(Path.home() / ".hermetic-club" / "agent-config.yaml")
-        p = Path(path)
+        p = Path(path).expanduser()
         if not p.exists():
             print(f"✗ Config not found at {p}", file=sys.stderr)
             print(f"  Create it from hermes-skill/config.yaml.example", file=sys.stderr)

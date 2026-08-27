@@ -92,7 +92,7 @@ hclub register-agent \
   --name "arch-desktop" \
   --display-name "Arch Desktop" \
   --device "arch-desktop" \
-  --categories '["general","user-preference","workflow"]'
+  --categories general user-preference workflow
 ```
 
 Registration creates a pending enrollment by default. The User must approve it through the admin API; only then can the one-time API key be retrieved from `/api/agents/enrollment/status`. Keep enrollment tokens and API keys private.

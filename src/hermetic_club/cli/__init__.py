@@ -69,6 +69,21 @@ def store_agent_key(profile: str, api_key: str) -> Path:
     return path
 
 
+def store_agent_config(profile: str, club_url: str, agent_name: str, api_key: str) -> Path:
+    if not api_key.startswith("hc_"):
+        raise ValueError("API key has an unexpected format")
+    path = Path.home() / ".hermetic-club" / "agent-config.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "club_url: " + json.dumps(club_url) + "\n"
+        "agent_name: " + json.dumps(agent_name) + "\n"
+        "api_key: " + json.dumps(api_key) + "\n",
+        encoding="utf-8",
+    )
+    path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    return path
+
+
 def cmd_register_agent(args: argparse.Namespace) -> None:
     import httpx
     params = {"name": args.name, "display_name": args.display_name or args.name,
@@ -81,7 +96,9 @@ def cmd_register_agent(args: argparse.Namespace) -> None:
     data = response.json()
     if data.get("api_key"):
         path = store_agent_key(args.profile or args.name, data["api_key"])
+        config_path = store_agent_config(args.profile or args.name, args.server_url, args.name, data["api_key"])
         print(f"  ✦ Legacy registration succeeded; key stored in {path}")
+        print(f"  ✦ Client config stored in {config_path}")
         return
     token = data["enrollment_token"]
     print(f"  ✦ Enrollment pending for '{data['name']}'")
@@ -97,7 +114,9 @@ def cmd_register_agent(args: argparse.Namespace) -> None:
         result = status.json()
         if result.get("status") == "approved" and result.get("api_key"):
             path = store_agent_key(args.profile or args.name, result["api_key"])
+            config_path = store_agent_config(args.profile or args.name, args.server_url, args.name, result["api_key"])
             print(f"  ✦ Enrollment approved; credential stored in {path}")
+            print(f"  ✦ Client config stored in {config_path}")
             return
         if result.get("status") in {"rejected", "expired"}:
             print(f"  ✗ Enrollment {result['status']}", file=sys.stderr)
