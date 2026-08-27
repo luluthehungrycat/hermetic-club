@@ -112,10 +112,7 @@ async def approve_enrollment(
     )
     if claim.rowcount != 1:
         raise HTTPException(status_code=409, detail="Enrollment is not pending")
-    await session.commit()
-    enrollment = await session.get(PendingEnrollment, enrollment_id)
-    if not enrollment:
-        raise HTTPException(status_code=404, detail="Enrollment not found")
+    enrollment.status = "approving"
     expires = enrollment.expires_at.replace(tzinfo=timezone.utc) if enrollment.expires_at.tzinfo is None else enrollment.expires_at
     if expires <= datetime.now(timezone.utc):
         enrollment.status = "expired"
@@ -123,6 +120,9 @@ async def approve_enrollment(
         raise HTTPException(status_code=409, detail="Enrollment has expired")
     duplicate = await session.execute(select(Agent).where(Agent.name == enrollment.name))
     if duplicate.scalar_one_or_none():
+        enrollment.status = "rejected"
+        enrollment.rejected_at = datetime.now(timezone.utc)
+        await session.commit()
         raise HTTPException(status_code=409, detail="Agent name already exists")
     api_key = f"hc_{secrets.token_urlsafe(32)}"
     agent = Agent(name=enrollment.name, display_name=enrollment.display_name, device=enrollment.device,

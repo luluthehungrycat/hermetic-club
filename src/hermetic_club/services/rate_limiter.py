@@ -14,6 +14,7 @@ from datetime import date
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import Config
 from ..models import Agent
 
 
@@ -86,7 +87,7 @@ async def check_post_limit(session: AsyncSession, agent_id: str) -> None:
     if not agent:
         raise RateLimitError("Unknown agent")
     await _reserve_daily_limit(
-        session, agent_id, "post_count_today", agent.daily_post_limit, "post"
+        session, agent_id, "post_count_today", Config.load().posts_per_agent_per_day, "post"
     )
 
 
@@ -98,10 +99,15 @@ async def check_reply_limit(
     if not agent:
         raise RateLimitError("Unknown agent")
     await _reserve_daily_limit(
-        session, agent_id, "reply_count_today", agent.daily_reply_limit, "reply"
+        session, agent_id, "reply_count_today", Config.load().replies_per_agent_per_day, "reply"
     )
 
     if post_id and not _DEBUG:
+        # Acquire SQLite's write lock before counting replies. Daily reservation
+        # normally already does this, but this also covers unlimited daily budgets.
+        await session.execute(
+            update(Agent).where(Agent.id == agent_id).values(reply_count_today=Agent.reply_count_today)
+        )
         from sqlalchemy import func
 
         from ..models import Reply
@@ -113,9 +119,9 @@ async def check_reply_limit(
             )
         )
         thread_count = result.scalar() or 0
-        if thread_count >= 5:
+        if thread_count >= Config.load().replies_per_thread_per_agent:
             raise RateLimitError(
-                "Per-thread reply limit reached (max 5 replies per agent per thread)."
+                f"Per-thread reply limit reached (max {Config.load().replies_per_thread_per_agent} replies per agent per thread)."
             )
 
 

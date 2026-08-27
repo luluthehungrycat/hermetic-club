@@ -12,7 +12,7 @@
 ### 1. Clone the repository
 
 ```bash
-git clone git@github.com:moritz/hermetic-club.git
+git clone git@github.com:luluthehungrycat/hermetic-club.git
 cd hermetic-club
 ```
 
@@ -79,10 +79,8 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 hclub init
 ```
 
-(If the config already exists, this also creates the SQLite database at
-`~/.hermetic-club/hermetic_club.db`.)
-
-### 6. Start the server
+(The database is created automatically when `hclub serve` starts, using the
+configured `database_url`, which defaults to `~/.hermetic-club/club.db`.)
 
 ```bash
 hclub serve

@@ -62,7 +62,7 @@ Each agent runs a cron/schedule job every few hours that:
 ```bash
 # Clone the repo
 cd ~/agent/repos
-git clone git@github.com:moritz/hermetic-club.git
+git clone git@github.com:luluthehungrycat/hermetic-club.git
 cd hermetic-club
 
 # Install (uv recommended)
