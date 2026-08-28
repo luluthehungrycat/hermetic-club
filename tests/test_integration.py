@@ -229,6 +229,40 @@ def test_targeted_handoff_acknowledgement_claims_pending_handoff(client):
     payload = acknowledged.json()
     assert payload["status"] == "acknowledged"
     assert payload["acknowledged_by"] == target_profile["id"]
+    assert any(
+        event["event_type"] == "acknowledged"
+        and event["agent_name"] == target_profile["name"]
+        and event["note"] == "I have claimed this work."
+        for event in payload["events"]
+    )
+
+
+def test_unrelated_agent_cannot_fetch_targeted_handoff_detail(client):
+    _, source_headers = enroll(client, "detail-source-agent")
+    target_profile, target_headers = enroll(client, "detail-target-agent")
+    _, outsider_headers = enroll(client, "detail-outsider-agent")
+    created = client.post(
+        "/api/handoffs",
+        headers=source_headers,
+        params={
+            "project": "detail-confidential-project",
+            "handoff_notes": "Only the source and target may read this.",
+            "target_agent": target_profile["name"],
+        },
+    )
+    assert created.status_code == 200, created.text
+    handoff_id = created.json()["id"]
+
+    assert client.get(
+        f"/api/handoffs/{handoff_id}", headers=source_headers
+    ).status_code == 200
+    assert client.get(
+        f"/api/handoffs/{handoff_id}", headers=target_headers
+    ).status_code == 200
+    outsider = client.get(
+        f"/api/handoffs/{handoff_id}", headers=outsider_headers
+    )
+    assert outsider.status_code == 403, outsider.text
 
 
 def test_targeted_handoff_list_is_hidden_from_unrelated_agent(client):
@@ -256,3 +290,46 @@ def test_targeted_handoff_list_is_hidden_from_unrelated_agent(client):
     assert any(item["id"] == handoff_id for item in source_list.json())
     assert any(item["id"] == handoff_id for item in target_list.json())
     assert all(item["id"] != handoff_id for item in outsider_list.json())
+
+
+def test_broadcast_handoff_discovery_and_mine_filter(client):
+    _, source_headers = enroll(client, "broadcast-source-agent")
+    _, other_headers = enroll(client, "broadcast-other-agent")
+    created = client.post(
+        "/api/handoffs",
+        headers=source_headers,
+        params={
+            "project": "broadcast-project",
+            "handoff_notes": "Any enrolled agent may claim this.",
+        },
+    )
+    assert created.status_code == 200, created.text
+    handoff_id = created.json()["id"]
+
+    # Broadcast handoffs are opt-in in the list API.
+    default_list = client.get("/api/handoffs", headers=other_headers)
+    assert default_list.status_code == 200, default_list.text
+    assert all(item["id"] != handoff_id for item in default_list.json())
+
+    source_broadcast = client.get(
+        "/api/handoffs", params={"broadcast": "true"}, headers=source_headers
+    )
+    other_broadcast = client.get(
+        "/api/handoffs", params={"broadcast": "true"}, headers=other_headers
+    )
+    source_mine = client.get(
+        "/api/handoffs",
+        params={"broadcast": "true", "mine": "true"},
+        headers=source_headers,
+    )
+    other_mine = client.get(
+        "/api/handoffs",
+        params={"broadcast": "true", "mine": "true"},
+        headers=other_headers,
+    )
+    for response in (source_broadcast, other_broadcast, source_mine, other_mine):
+        assert response.status_code == 200, response.text
+    assert any(item["id"] == handoff_id for item in source_broadcast.json())
+    assert any(item["id"] == handoff_id for item in other_broadcast.json())
+    assert any(item["id"] == handoff_id for item in source_mine.json())
+    assert all(item["id"] != handoff_id for item in other_mine.json())
