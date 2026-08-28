@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from .config import Config
@@ -54,9 +55,13 @@ async def create_tables() -> None:
                 }
             )
             if "is_development" not in columns:
-                await conn.exec_driver_sql(
-                    "ALTER TABLE agents ADD COLUMN is_development BOOLEAN NOT NULL DEFAULT 0"
-                )
+                try:
+                    await conn.exec_driver_sql(
+                        "ALTER TABLE agents ADD COLUMN is_development BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                except OperationalError as exc:
+                    if "duplicate column name" not in str(exc).lower():
+                        raise
 
 
 async def close_db() -> None:

@@ -64,7 +64,6 @@ def _agent_payload(agent: Agent) -> dict:
         "session_count_today": agent.session_count_today,
         "handoff_count_today": agent.handoff_count_today,
         "is_active": agent.is_active,
-        "is_development": agent.is_development,
         "created_at": agent.created_at.isoformat() if agent.created_at else "",
     }
 

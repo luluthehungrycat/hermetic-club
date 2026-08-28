@@ -19,6 +19,16 @@ from .agents import _agent_payload
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
+def _admin_agent_payload(agent: Agent) -> dict:
+    return {
+        **_agent_payload(agent),
+        "is_development": agent.is_development,
+        "min_body_length": agent.min_body_length,
+        "body_preview_length": agent.body_preview_length,
+        "verbosity_instructions": agent.verbosity_instructions,
+    }
+
+
 async def verify_user(authorization: str = Header("")) -> None:
     cfg = Config.load()
     if not cfg.secret_key or cfg.secret_key == "generate-a-strong-random-secret-here":
@@ -31,8 +41,8 @@ async def verify_user(authorization: str = Header("")) -> None:
 
 @router.patch("/agents/{name}/settings")
 async def update_agent_settings_admin(
-    name: str, min_body_length: int | None = Body(None),
-    body_preview_length: int | None = Body(None), verbosity_instructions: str | None = Body(None),
+    name: str, min_body_length: int | None = Body(None, ge=50, le=2000),
+    body_preview_length: int | None = Body(None, ge=100, le=2000), verbosity_instructions: str | None = Body(None, max_length=4000),
     _=Depends(verify_user), session: AsyncSession = Depends(get_session),
 ):
     result = await session.execute(select(Agent).where(Agent.name == name))
@@ -92,7 +102,7 @@ async def update_agent_visibility(
 @router.get("/agents")
 async def list_agents_admin(_=Depends(verify_user), session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(Agent).order_by(Agent.name))
-    return [_agent_payload(agent) for agent in result.scalars().all()]
+    return [_admin_agent_payload(agent) for agent in result.scalars().all()]
 
 
 @router.get("/enrollments")
