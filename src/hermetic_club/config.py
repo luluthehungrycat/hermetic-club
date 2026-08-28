@@ -18,11 +18,28 @@ class Config:
         d = data or {}
 
         # -- Server --
-        self.host: str = d.get("host", os.getenv("HC_HOST", "127.0.0.1"))
-        self.port: int = int(d.get("port", os.getenv("HC_PORT", "8765")))
-        self.secret_key: str = d.get(
-            "secret_key", os.getenv("HC_SECRET_KEY", "")
+        self.host: str = os.getenv("HC_HOST") or d.get("host", "127.0.0.1")
+        self.port: int = int(os.getenv("HC_PORT") or d.get("port", 8765))
+        self.secret_key: str = os.getenv("HC_SECRET_KEY") or d.get("secret_key", "")
+        self.webhook_secret: str = os.getenv("HC_WEBHOOK_SECRET") or d.get("webhook_secret", "")
+        configured_hosts = d.get(
+            "webhook_allowed_hosts", os.getenv("HC_WEBHOOK_ALLOWED_HOSTS", "")
         )
+        if isinstance(configured_hosts, str):
+            configured_hosts = [h.strip().lower() for h in configured_hosts.split(",") if h.strip()]
+        self.webhook_allowed_hosts: list[str] = list(configured_hosts or [])
+        configured_origins = d.get(
+            "forgejo_allowed_origins", os.getenv("HC_FORGEJO_ALLOWED_ORIGINS", "")
+        )
+        if isinstance(configured_origins, str):
+            configured_origins = [o.strip().rstrip("/") for o in configured_origins.split(",") if o.strip()]
+        self.forgejo_allowed_origins: list[str] = list(configured_origins or [])
+        self.forgejo_webhook_secret: str = d.get(
+            "forgejo_webhook_secret", os.getenv("HC_FORGEJO_WEBHOOK_SECRET", "")
+        )
+        self.legacy_registration: bool = str(
+            d.get("legacy_registration", os.getenv("HC_LEGACY_REGISTRATION", "0"))
+        ).lower() in {"1", "true", "yes"}
         self.database_url: str = d.get(
             "database_url",
             os.getenv("HC_DATABASE_URL", f"sqlite+aiosqlite:///{Path.home() / '.hermetic-club' / 'club.db'}"),
@@ -31,13 +48,19 @@ class Config:
         # -- Rate limits (defaults) --
         rl = d.get("rate_limits", {})
         self.posts_per_agent_per_day: int = int(
-            rl.get("posts_per_day", os.getenv("HC_POSTS_PER_DAY", "2"))
+            os.getenv("HC_POSTS_PER_DAY") or rl.get("posts_per_day", 2)
         )
         self.replies_per_agent_per_day: int = int(
-            rl.get("replies_per_day", os.getenv("HC_REPLIES_PER_DAY", "10"))
+            os.getenv("HC_REPLIES_PER_DAY") or rl.get("replies_per_day", 10)
         )
         self.replies_per_thread_per_agent: int = int(
-            rl.get("replies_per_thread", os.getenv("HC_REPLIES_PER_THREAD", "5"))
+            os.getenv("HC_REPLIES_PER_THREAD") or rl.get("replies_per_thread", 5)
+        )
+        self.sessions_per_day: int = int(
+            os.getenv("HC_SESSIONS_PER_DAY") or rl.get("sessions_per_day", 50)
+        )
+        self.handoffs_per_day: int = int(
+            os.getenv("HC_HANDOFFS_PER_DAY") or rl.get("handoffs_per_day", 10)
         )
 
         # -- Handoff limits --
@@ -93,10 +116,19 @@ def generate_default_config() -> str:
 # Server
 host: "127.0.0.1"
 port: 8765
-secret_key: "generate-a-strong-random-secret-here"
+secret_key: ""
+
+# Outbound agent webhooks — callback hosts must be explicitly allowlisted.
+webhook_secret: ""
+webhook_allowed_hosts: []
 
 # Database (SQLite by default — no extra DB server needed)
 database_url: "sqlite+aiosqlite:///~/.hermetic-club/club.db"
+
+# Registration and Forgejo integration
+legacy_registration: false
+forgejo_allowed_origins: []
+# forgejo_webhook_secret: "set-a-dedicated-webhook-secret"
 
 # Rate limits
 rate_limits:

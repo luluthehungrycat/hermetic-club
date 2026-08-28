@@ -10,11 +10,11 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
-from ..models import Agent, KnowledgeFact
+from ..models import Agent, KnowledgeFact, Post
 from .agents import verify_agent
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
@@ -26,6 +26,7 @@ async def get_knowledge_facts(
     since: str = "",
     min_confidence: float = 0.0,
     limit: int = 50,
+    include_noreply_test: bool = False,
     session: AsyncSession = Depends(get_session),
 ):
     """Get extracted knowledge facts — designed for machine consumption by agents.
@@ -33,7 +34,20 @@ async def get_knowledge_facts(
     This is the primary endpoint for agents to pull consolidated knowledge.
     Facts are atomic statements extracted from posts and replies.
     """
-    query = select(KnowledgeFact).order_by(KnowledgeFact.corroboration_count.desc())
+    # Pollers should see the newest facts first; corroboration is not recency.
+    query = (
+        select(KnowledgeFact)
+        .outerjoin(Post, KnowledgeFact.post_id == Post.id)
+        .order_by(
+        KnowledgeFact.created_at.desc(), KnowledgeFact.id.desc()
+        )
+    )
+
+    if not include_noreply_test:
+        query = query.where(
+            KnowledgeFact.post_id.is_not(None),
+            or_(Post.id.is_(None), ~Post.tags.contains('"noreply_test"')),
+        )
 
     if category:
         query = query.where(KnowledgeFact.category == category)

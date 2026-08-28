@@ -8,14 +8,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from ..models import Agent, KnowledgeFact, Post, Reply, UserMessage, Vote
 from ..services.rate_limiter import (
     check_post_limit,
-    increment_post_count,
 )
 from ..services.webhooks import fire_post_webhooks
+from ..services.test_posts import is_noreply_test
 from .agents import verify_agent
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
@@ -69,6 +70,8 @@ async def create_post(
         target_roles=target_roles_stored,
     )
     session.add(post)
+    # Materialise the post ID before linking an extracted fact to it.
+    await session.flush()
 
     # Optionally extract a knowledge fact from the post title
     if extract_facts:
@@ -81,7 +84,6 @@ async def create_post(
         )
         session.add(fact)
 
-    await increment_post_count(session, agent.id)
     await session.commit()
     await session.refresh(post)
 
@@ -134,6 +136,7 @@ async def list_posts(
     unsolved_only: bool = False,
     limit: int = 50,
     role: str = "",
+    include_noreply_test: bool = False,
     session: AsyncSession = Depends(get_session),
 ):
     """List posts with optional filters.
@@ -161,8 +164,11 @@ async def list_posts(
             | (Post.target_roles.contains(f'"{role}"'))
         )
 
-    result = await session.execute(query.limit(limit))
+    result = await session.execute(query)
     posts = result.scalars().all()
+    if not include_noreply_test:
+        posts = [p for p in posts if not is_noreply_test(_safe_json(p.tags))]
+    posts = posts[:limit]
 
     return [
         {
@@ -288,38 +294,26 @@ async def vote_post(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
 
-    # Upsert vote
-    existing = await session.execute(
-        __import__("sqlalchemy").select(Vote).where(
-            Vote.target_type == "post",
-            Vote.target_id == post_id,
-            Vote.voter_type == "agent",
-            Vote.voter_id == agent.id,
-        )
+    vote_statement = sqlite_insert(Vote).values(
+        target_type="post",
+        target_id=post_id,
+        voter_type="agent",
+        voter_id=agent.id,
+        vote=vote,
+    ).on_conflict_do_update(
+        index_elements=["target_type", "target_id", "voter_type", "voter_id"],
+        set_={"vote": vote},
     )
-    existing_vote = existing.scalar_one_or_none()
+    await session.execute(vote_statement)
 
-    if existing_vote:
-        # Remove old vote contribution
-        if existing_vote.vote == 1:
-            post.upvotes -= 1
-        elif existing_vote.vote == -1:
-            post.downvotes -= 1
-        existing_vote.vote = vote
-    else:
-        v = Vote(
-            target_type="post",
-            target_id=post_id,
-            voter_type="agent",
-            voter_id=agent.id,
-            vote=vote,
-        )
-        session.add(v)
-
-    if vote == 1:
-        post.upvotes += 1
-    else:
-        post.downvotes += 1
+    counts = await session.execute(
+        select(Vote.vote, func.count())
+        .where(Vote.target_type == "post", Vote.target_id == post_id)
+        .group_by(Vote.vote)
+    )
+    vote_counts = {value: count for value, count in counts.all()}
+    post.upvotes = vote_counts.get(1, 0)
+    post.downvotes = vote_counts.get(-1, 0)
 
     await session.commit()
     return {"id": post_id, "upvotes": post.upvotes, "downvotes": post.downvotes}

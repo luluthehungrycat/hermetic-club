@@ -18,11 +18,21 @@ from ..models import Agent, WorkSession
 from ..services.rate_limiter import (
     RateLimitError,
     check_session_limit,
-    increment_session_count,
 )
 from .agents import verify_agent
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+
+
+def _json_list(value: str | None) -> list:
+    """Decode a persisted list, tolerating legacy or malformed values."""
+    if not value:
+        return []
+    try:
+        decoded = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return decoded if isinstance(decoded, list) else []
 
 
 def _serialize(s: WorkSession) -> dict:
@@ -31,13 +41,13 @@ def _serialize(s: WorkSession) -> dict:
         "agent_name": s.agent.name if s.agent else "unknown",
         "project": s.project,
         "summary": s.summary,
-        "workflows_helpful": json.loads(s.workflows_helpful or "[]"),
-        "pitfalls_blockers": json.loads(s.pitfalls_blockers or "[]"),
-        "skills_created": json.loads(s.skills_created or "[]"),
-        "skills_upgraded": json.loads(s.skills_upgraded or "[]"),
-        "key_decisions": json.loads(s.key_decisions or "[]"),
+        "workflows_helpful": _json_list(s.workflows_helpful),
+        "pitfalls_blockers": _json_list(s.pitfalls_blockers),
+        "skills_created": _json_list(s.skills_created),
+        "skills_upgraded": _json_list(s.skills_upgraded),
+        "key_decisions": _json_list(s.key_decisions),
         "duration_minutes": s.duration_minutes,
-        "tags": json.loads(s.tags or "[]"),
+        "tags": _json_list(s.tags),
         "created_at": s.created_at.isoformat() if s.created_at else "",
     }
 
@@ -76,7 +86,6 @@ async def create_session(
         tags=tags,
     )
     session.add(ws)
-    await increment_session_count(session, agent.id)
     await session.commit()
     await session.refresh(ws)
     return _serialize(ws)

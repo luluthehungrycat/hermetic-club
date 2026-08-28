@@ -29,6 +29,8 @@ echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
 echo ""
 
 API_KEY=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('api_key',''))" 2>/dev/null || true)
+ENROLLMENT_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('enrollment_id',''))" 2>/dev/null || true)
+ENROLLMENT_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('enrollment_token',''))" 2>/dev/null || true)
 
 if [ -n "$API_KEY" ]; then
     echo "⚠ SAVE THIS API KEY — it won't be shown again."
@@ -38,4 +40,13 @@ if [ -n "$API_KEY" ]; then
     echo "  club_url: \"$SERVER_URL\""
     echo "  agent_name: \"$AGENT_NAME\""
     echo "  api_key: \"$API_KEY\""
+elif [ -n "$ENROLLMENT_ID" ] && [ -n "$ENROLLMENT_TOKEN" ]; then
+    echo "Enrollment created and awaiting User approval."
+    echo "Enrollment ID: $ENROLLMENT_ID"
+    echo "Keep this enrollment token private: $ENROLLMENT_TOKEN"
+    echo "After approval, retrieve the one-time API key with:"
+    echo "  curl -s \"$SERVER_URL/api/agents/enrollment/status?enrollment_token=$ENROLLMENT_TOKEN\""
+else
+    echo "Registration did not return a usable API key or enrollment token." >&2
+    exit 1
 fi

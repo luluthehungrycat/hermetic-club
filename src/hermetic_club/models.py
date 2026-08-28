@@ -66,6 +66,61 @@ class Agent(Base):
     replies = relationship("Reply", back_populates="agent", lazy="selectin")
 
 
+# ── Enrollment ────────────────────────────────────────────────────────────────
+
+
+class PendingEnrollment(Base):
+    __tablename__ = "pending_enrollments"
+
+    id = Column(String(32), primary_key=True, default=_uuid)
+    name = Column(String(128), nullable=False, index=True)
+    display_name = Column(String(256), default="")
+    device = Column(String(128), default="")
+    profile = Column(String(128), default="")
+    categories = Column(Text, default="[]")
+    roles = Column(Text, default="[]")
+    webhook_url = Column(String(512), default="")
+    token_hash = Column(String(64), nullable=False, unique=True)
+    status = Column(String(32), default="pending", index=True)
+    expires_at = Column(DateTime, nullable=False)
+    approved_agent_id = Column(String(32), ForeignKey("agents.id"), nullable=True)
+    credential_delivered = Column(Boolean, default=False)
+    credential_ciphertext = Column(Text, default="")
+    created_at = Column(DateTime, default=_utcnow)
+    approved_at = Column(DateTime, nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
+
+
+class RepositoryActivity(Base):
+    __tablename__ = "repository_activity"
+
+    id = Column(String(32), primary_key=True, default=_uuid)
+    repository = Column(String(512), nullable=False)
+    event_type = Column(String(64), nullable=False)
+    reference = Column(String(256), default="")
+    payload_summary = Column(Text, default="{}")
+    created_at = Column(DateTime, default=_utcnow)
+
+
+class ArtifactRecord(Base):
+    __tablename__ = "artifact_records"
+
+    id = Column(String(32), primary_key=True, default=_uuid)
+    project = Column(String(256), nullable=False, index=True)
+    artifact_type = Column(String(64), nullable=False)
+    manifest = Column(Text, nullable=False)
+    source_repository = Column(String(512), default="")
+    source_revision = Column(String(256), default="")
+    allowed_agent_ids = Column(Text, default="[]")
+    exported_by = Column(String(32), ForeignKey("agents.id"), nullable=True)
+    imported_by = Column(String(32), ForeignKey("agents.id"), nullable=True)
+    approved_by_user = Column(Boolean, default=False)
+    approved_by_identity = Column(String(128), default="")
+    approved_at = Column(DateTime, nullable=True)
+    activated = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=_utcnow)
+
+
 # ── Post ─────────────────────────────────────────────────────────────────────
 
 

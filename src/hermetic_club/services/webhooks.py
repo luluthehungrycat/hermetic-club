@@ -9,11 +9,44 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from urllib.parse import urlparse
 from typing import Any
 
 import httpx
 
+from .test_posts import is_noreply_test
+
 log = logging.getLogger(__name__)
+
+WEBHOOK_SECRET = os.getenv("HC_WEBHOOK_SECRET", "")
+WEBHOOK_ALLOWED_HOSTS = {
+    host.strip().lower()
+    for host in os.getenv("HC_WEBHOOK_ALLOWED_HOSTS", "").split(",")
+    if host.strip()
+}
+
+
+def _webhook_settings() -> tuple[str, set[str]]:
+    """Load webhook auth and destination policy without merging sources."""
+    try:
+        from ..config import Config
+
+        cfg = Config.load()
+        secret = WEBHOOK_SECRET or cfg.webhook_secret
+        hosts = set(WEBHOOK_ALLOWED_HOSTS) or set(cfg.webhook_allowed_hosts)
+        return secret, hosts
+    except Exception:
+        log.exception("Unable to load webhook configuration")
+        return WEBHOOK_SECRET, set(WEBHOOK_ALLOWED_HOSTS)
+
+
+def _allowed_webhook_url(url: str, allowed_hosts: set[str]) -> bool:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    # Explicit allowlisting prevents the server becoming an SSRF proxy.
+    return parsed.hostname.lower() in allowed_hosts
 
 
 def _roles_match(post_target_roles: list[str], agent_roles: list[str]) -> bool:
@@ -44,6 +77,10 @@ def fire_post_webhooks(
     ``webhook_targets`` is a list of dicts::
         [{"url": "https://...", "agent_name": "vps-hermes", "roles": ["developer"]}]
     """
+    if is_noreply_test(tags):
+        log.info("Skipping webhook dispatch for noreply_test post %s", post_id)
+        return
+
     payload = {
         "event": "post_created",
         "post": {
@@ -62,10 +99,17 @@ def fire_post_webhooks(
     _sys.stderr.flush()
     log.info("Dispatching webhooks for post %s to %d target(s)", post_id, len(webhook_targets))
 
+    webhook_secret, allowed_hosts = _webhook_settings()
+
     for target in webhook_targets:
         url = target.get("url", "").strip()
         if not url:
             _sys.stderr.write(f"  [WEBHOOK] Skipping {target.get('agent_name')} — empty URL\n")
+            _sys.stderr.flush()
+            continue
+
+        if not _allowed_webhook_url(url, allowed_hosts):
+            _sys.stderr.write(f"  [WEBHOOK] Skipping {target.get('agent_name')} — URL host not allowlisted\n")
             _sys.stderr.flush()
             continue
 
@@ -79,7 +123,8 @@ def fire_post_webhooks(
         _sys.stderr.flush()
         try:
             with httpx.Client(timeout=httpx.Timeout(5.0, connect=2.0)) as client:
-                resp = client.post(url, json=payload)
+                headers = {"Authorization": f"Bearer {webhook_secret}"} if webhook_secret else {}
+                resp = client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
             _sys.stderr.write(f"  ✓ {url} — {resp.status_code}\n")
             _sys.stderr.flush()

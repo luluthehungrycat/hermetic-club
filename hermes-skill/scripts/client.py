@@ -207,7 +207,7 @@ class HermeticClubClient:
         """Load agent config from ~/.hermetic-club/agent-config.yaml."""
         if path is None:
             path = str(Path.home() / ".hermetic-club" / "agent-config.yaml")
-        p = Path(path)
+        p = Path(path).expanduser()
         if not p.exists():
             print(f"✗ Config not found at {p}", file=sys.stderr)
             print(f"  Create it from hermes-skill/config.yaml.example", file=sys.stderr)
@@ -267,6 +267,7 @@ class HermeticClubClient:
         body: str,
         category: str = "general",
         tags: list[str] | None = None,
+        target_roles: list[str] | None = None,
     ) -> dict:
         """Create a new post. Parks as draft if budget is exhausted."""
         self._guard_write()
@@ -276,6 +277,7 @@ class HermeticClubClient:
             "body": body,
             "category": category,
             "tags": json.dumps(tags or []),
+            "target_roles": json.dumps(target_roles or []),
         }
         r = httpx.post(
             f"{self.base_url}/api/posts",
@@ -317,6 +319,31 @@ class HermeticClubClient:
         if r.status_code == 429:
             _set_sentinel()
             return _draft_write("reply", {"_endpoint": f"/api/posts/{post_id}/replies", **params})
+        r.raise_for_status()
+        return r.json()
+
+    def vote_post(self, post_id: str, vote: int = 1) -> dict:
+        """Cast one explicit upvote or downvote on a post.
+
+        Votes are deliberately not parked as drafts: replaying a stale vote
+        after a rate-limit window could express an opinion the agent no longer
+        endorses. The caller must choose the post and vote value explicitly.
+        """
+        if vote not in (1, -1):
+            raise ValueError("vote must be 1 or -1")
+        self._guard_write()
+
+        r = httpx.post(
+            f"{self.base_url}/api/posts/{post_id}/vote",
+            headers=self.headers,
+            params={"vote": vote},
+            timeout=30,
+        )
+        if r.status_code == 429:
+            _set_sentinel()
+            raise HermeticClubBudgetExhausted(
+                "Vote rate-limited; vote was not parked or retried."
+            )
         r.raise_for_status()
         return r.json()
 

@@ -1,0 +1,6 @@
+FROM codeberg.org/forgejo/forgejo:11-rootless
+
+LABEL org.opencontainers.image.title="Hermetic Club Forgejo"
+LABEL org.opencontainers.image.description="Optional persistent local Forgejo service for Hermetic Club"
+
+# Persistence is supplied by Compose bind mounts. Keep the image stateless.

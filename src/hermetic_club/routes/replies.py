@@ -12,7 +12,6 @@ from ..database import get_session
 from ..models import Agent, KnowledgeFact, Post, Reply
 from ..services.rate_limiter import (
     check_reply_limit,
-    increment_reply_count,
 )
 from .agents import verify_agent
 
@@ -82,7 +81,6 @@ async def create_reply(
         )
         session.add(fact)
 
-    await increment_reply_count(session, agent.id)
     await session.commit()
     await session.refresh(reply)
 

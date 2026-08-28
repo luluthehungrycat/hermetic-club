@@ -18,7 +18,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -27,8 +27,9 @@ from ..models import Agent, Handoff, HandoffEvent
 from ..services.rate_limiter import (
     RateLimitError,
     check_handoff_limit,
-    increment_handoff_count,
 )
+from ..config import Config
+from ..services.security import valid_forgejo_origin
 from .agents import verify_agent
 
 router = APIRouter(prefix="/api/handoffs", tags=["handoffs"])
@@ -113,6 +114,9 @@ async def create_handoff(
     """
     await check_handoff_limit(session, agent.id)
 
+    if repo_url and not valid_forgejo_origin(repo_url, Config.load().forgejo_allowed_origins):
+        raise HTTPException(status_code=400, detail="repo_url must use an allowed Forgejo HTTP(S) origin")
+
     resolved_target = None
     if target_agent:
         result = await session.execute(
@@ -143,7 +147,6 @@ async def create_handoff(
         session, handoff.id, "created", agent.id,
         f"Handoff created for project '{project}'",
     )
-    await increment_handoff_count(session, agent.id)
     await session.commit()
 
     # Re-fetch with relationships loaded
@@ -191,16 +194,15 @@ async def list_handoffs(
             query = query.where(Handoff.target_agent_id == tgt.id)
     if not broadcast:
         query = query.where(Handoff.target_agent_id.isnot(None))
+    query = query.where(
+        (Handoff.source_agent_id == agent.id)
+        | (Handoff.target_agent_id == agent.id)
+        | (Handoff.target_agent_id.is_(None))
+    )
     if mine:
-        query = (
-            select(Handoff)
-            .options(*_handoff_options())
-            .where(
-                (Handoff.source_agent_id == agent.id)
-                | (Handoff.target_agent_id == agent.id)
-                | (Handoff.target_agent_id.is_(None))
-            )
-            .order_by(Handoff.created_at.desc())
+        query = query.where(
+            (Handoff.source_agent_id == agent.id)
+            | (Handoff.target_agent_id == agent.id)
         )
 
     result = await session.execute(query.limit(limit))
@@ -210,6 +212,7 @@ async def list_handoffs(
 @router.get("/{handoff_id}")
 async def get_handoff(
     handoff_id: str,
+    agent: Agent = Depends(verify_agent),
     session: AsyncSession = Depends(get_session),
 ):
     """Get a single handoff request with its full event log."""
@@ -221,6 +224,8 @@ async def get_handoff(
     handoff = result.scalar_one_or_none()
     if not handoff:
         raise HTTPException(status_code=404, detail="Handoff not found")
+    if handoff.source_agent_id != agent.id and handoff.target_agent_id not in (None, "", agent.id) and handoff.acknowledged_by != agent.id:
+        raise HTTPException(status_code=403, detail="Agent is not involved in this handoff")
     return _serialize(handoff)
 
 
@@ -257,9 +262,22 @@ async def acknowledge_handoff(
             detail="This handoff is targeted at another agent and cannot be acknowledged by you",
         )
 
-    handoff.status = "acknowledged"
-    handoff.acknowledged_by = agent.id
-    handoff.acknowledged_at = datetime.now(timezone.utc)
+    claim = await session.execute(
+        update(Handoff)
+        .where(
+            Handoff.id == handoff_id,
+            Handoff.status == "pending",
+            (Handoff.target_agent_id.is_(None)) | (Handoff.target_agent_id == agent.id),
+        )
+        .values(
+            status="acknowledged",
+            acknowledged_by=agent.id,
+            acknowledged_at=datetime.now(timezone.utc),
+        )
+    )
+    if claim.rowcount != 1:
+        raise HTTPException(status_code=409, detail="Handoff is no longer pending")
+    await session.refresh(handoff)
 
     await _add_event(
         session, handoff_id, "acknowledged", agent.id,

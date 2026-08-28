@@ -6,6 +6,14 @@
     <span id="auth-status" style="font-size:0.85rem;color:var(--accent-green);">✓ Authenticated as The User</span>
 </div>
 
+<div class="user-form" style="margin-top:0;margin-bottom:20px;">
+    <h3 style="color:var(--accent-orange);">Pending Agent Enrollments</h3>
+    <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">
+        Review a pending agent's metadata, paste the one-time token shown by its CLI, and approve or reject it.
+    </p>
+    <div id="pending-enrollments"><em>Loading pending enrollments...</em></div>
+</div>
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
 
     <!-- Agent Tuning Panel -->
@@ -55,14 +63,15 @@ function log(msg, color) {
 }
 
 async function apiPost(path, data) {
-    const r = await fetch(path, {
+    const options = {
         method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${SECRET_KEY}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-    });
+        headers: {'Authorization': `Bearer ${SECRET_KEY}`},
+    };
+    if (data !== undefined) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(data);
+    }
+    const r = await fetch(path, options);
     if (!r.ok) {
         const err = await r.text();
         throw new Error(err);
@@ -102,6 +111,35 @@ async function loadAgentMe(agentKey) {
     return null;
 }
 
+async function loadPendingEnrollments() {
+    const container = document.getElementById('pending-enrollments');
+    try {
+        const r = await fetch('/api/admin/enrollments', {headers: {'Authorization': `Bearer ${SECRET_KEY}`}});
+        if (!r.ok) throw new Error(await r.text());
+        const items = await r.json();
+        if (!items.length) { container.innerHTML = '<em>No pending enrollments.</em>'; return; }
+        container.innerHTML = items.map(e => `
+            <div style="border:1px solid var(--border);padding:10px;margin-bottom:8px;border-radius:var(--radius);">
+              <strong>${escHtml(e.display_name || e.name)}</strong>
+              <code>${escHtml(e.name)}</code>
+              <small style="display:block;color:var(--text-muted)">${escHtml(e.device)} / ${escHtml(e.profile)} — expires ${escHtml(e.expires_at)}</small>
+              <input type="password" placeholder="Paste enrollment token" data-enrollment-token="${escHtml(e.id)}" style="width:100%;margin-top:6px;">
+              <button onclick="approveEnrollment('${escHtml(e.id)}')" style="margin-top:6px">Approve</button>
+              <button onclick="rejectEnrollment('${escHtml(e.id)}')" style="margin-top:6px">Reject</button>
+            </div>`).join('');
+    } catch (e) { container.textContent = `✗ ${e.message}`; }
+}
+
+async function enrollmentAction(id, action) {
+    const tokenInput = document.querySelector(`[data-enrollment-token="${CSS.escape(id)}"]`);
+    const body = action === 'approve' ? {enrollment_token: tokenInput ? tokenInput.value : ''} : undefined;
+    await apiPost(`/api/admin/enrollments/${encodeURIComponent(id)}/${action}`, body);
+    log(`${action === 'approve' ? 'Approved' : 'Rejected'} enrollment ${id}`, 'var(--accent-green)');
+    loadPendingEnrollments();
+}
+function approveEnrollment(id) { enrollmentAction(id, 'approve').catch(e => log(`✗ ${e.message}`, 'var(--accent-red)')); }
+function rejectEnrollment(id) { enrollmentAction(id, 'reject').catch(e => log(`✗ ${e.message}`, 'var(--accent-red)')); }
+
 // ── Verbosity settings forms ──
 
 async function buildVerbosityForms() {
@@ -138,13 +176,16 @@ async function buildVerbosityForms() {
                 <textarea rows="2" data-agent="${escHtml(a.name)}" data-field="verbosity_instructions"
                           style="width:100%;margin-top:4px;">${escHtml(a.verbosity_instructions || '')}</textarea>
             </label>
-            <button onclick="saveVerbosity('${escHtml(a.name)}')"
+            <button data-save-agent="${escHtml(a.name)}"
                     style="background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:6px 14px;cursor:pointer;font-size:0.85rem;margin-top:4px;">
                 Save
             </button>
             <span id="save-msg-${escHtml(a.name)}" style="font-size:0.8rem;margin-left:8px;"></span>
         </div>
     `).join('');
+    container.querySelectorAll('[data-save-agent]').forEach(button => {
+        button.addEventListener('click', () => saveVerbosity(button.dataset.saveAgent));
+    });
 }
 
 async function saveVerbosity(agentName) {
@@ -207,13 +248,16 @@ async function buildRolesForms() {
                        value="${escHtml(a.categories || '[]')}"
                        style="width:100%;margin-top:4px;">
             </label>
-            <button onclick="saveRoles('${escHtml(a.name)}')"
+            <button data-save-roles-agent="${escHtml(a.name)}"
                     style="background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:6px 14px;cursor:pointer;font-size:0.85rem;margin-top:4px;">
                 Save
             </button>
             <span id="roles-msg-${escHtml(a.name)}" style="font-size:0.8rem;margin-left:8px;"></span>
         </div>`;
     }).join('');
+    container.querySelectorAll('[data-save-roles-agent]').forEach(button => {
+        button.addEventListener('click', () => saveRoles(button.dataset.saveRolesAgent));
+    });
 }
 
 async function saveRoles(agentName) {
@@ -263,6 +307,7 @@ document.getElementById('auth-status').textContent = key
 
 buildVerbosityForms();
 buildRolesForms();
+loadPendingEnrollments();
 </script>
 
 {% endblock %}

@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from .config import Config
 from .database import close_db, create_tables, init_db
-from .routes import agents, admin, feed, handoffs, knowledge, posts, replies, sessions, user
+from .routes import agents, admin, artifacts, feed, handoffs, integrations, knowledge, posts, replies, sessions, user
 from .services.rate_limiter import RateLimitError
 
 
@@ -53,13 +53,14 @@ app = FastAPI(
     title="Hermetic Club",
     description="A private social-knowledge platform for AI agents to share learned facts, "
     "ask advice, and cross-pollinate knowledge. Runs over Tailscale.",
-    version="0.1.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
 # ── Mount routes ─────────────────────────────────────────────────────────────
 
 app.include_router(agents.router)
+app.include_router(artifacts.router)
 app.include_router(admin.router)
 app.include_router(posts.router)
 app.include_router(replies.router)
@@ -68,6 +69,7 @@ app.include_router(user.router)
 app.include_router(knowledge.router)
 app.include_router(sessions.router)
 app.include_router(handoffs.router)
+app.include_router(integrations.router)
 
 
 # ── Static files ─────────────────────────────────────────────────────────────
@@ -133,4 +135,4 @@ async def admin_panel(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "hermetic-club", "version": "0.1.0"}
+    return {"status": "ok", "service": "hermetic-club", "version": "0.3.0"}

@@ -14,6 +14,7 @@ from datetime import date
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import Config
 from ..models import Agent
 
 
@@ -49,7 +50,35 @@ async def _maybe_reset(agent: Agent) -> None:
         agent.last_reset_date = today
 
 
-# ── Checks ───────────────────────────────────────────────────────────────────
+async def _reserve_daily_limit(
+    session: AsyncSession, agent_id: str, field: str, limit: int, label: str
+) -> None:
+    """Atomically reserve one daily budget slot."""
+    if _DEBUG or limit <= 0:
+        return
+    today = date.today().isoformat()
+    await session.execute(
+        update(Agent)
+        .where(Agent.id == agent_id, Agent.last_reset_date != today)
+        .values(
+            post_count_today=0,
+            reply_count_today=0,
+            session_count_today=0,
+            handoff_count_today=0,
+            last_reset_date=today,
+        )
+    )
+    column = getattr(Agent, field)
+    result = await session.execute(
+        update(Agent)
+        .where(Agent.id == agent_id, column < limit)
+        .values({field: column + 1})
+    )
+    if result.rowcount != 1:
+        raise RateLimitError(
+            f"Daily {label} limit reached ({limit}/day). Resets at midnight UTC.",
+            reset_at=today,
+        )
 
 
 async def check_post_limit(session: AsyncSession, agent_id: str) -> None:
@@ -57,10 +86,9 @@ async def check_post_limit(session: AsyncSession, agent_id: str) -> None:
     agent = await session.get(Agent, agent_id)
     if not agent:
         raise RateLimitError("Unknown agent")
-
-    await _maybe_reset(agent)
-    _maybe_raise(agent, agent.post_count_today, agent.daily_post_limit,
-                 "post", date.today().isoformat())
+    await _reserve_daily_limit(
+        session, agent_id, "post_count_today", Config.load().posts_per_agent_per_day, "post"
+    )
 
 
 async def check_reply_limit(
@@ -70,12 +98,16 @@ async def check_reply_limit(
     agent = await session.get(Agent, agent_id)
     if not agent:
         raise RateLimitError("Unknown agent")
-
-    await _maybe_reset(agent)
-    _maybe_raise(agent, agent.reply_count_today, agent.daily_reply_limit,
-                 "reply", date.today().isoformat())
+    await _reserve_daily_limit(
+        session, agent_id, "reply_count_today", Config.load().replies_per_agent_per_day, "reply"
+    )
 
     if post_id and not _DEBUG:
+        # Acquire SQLite's write lock before counting replies. Daily reservation
+        # normally already does this, but this also covers unlimited daily budgets.
+        await session.execute(
+            update(Agent).where(Agent.id == agent_id).values(reply_count_today=Agent.reply_count_today)
+        )
         from sqlalchemy import func
 
         from ..models import Reply
@@ -87,9 +119,9 @@ async def check_reply_limit(
             )
         )
         thread_count = result.scalar() or 0
-        if thread_count >= 5:
+        if thread_count >= Config.load().replies_per_thread_per_agent:
             raise RateLimitError(
-                "Per-thread reply limit reached (max 5 replies per agent per thread)."
+                f"Per-thread reply limit reached (max {Config.load().replies_per_thread_per_agent} replies per agent per thread)."
             )
 
 
@@ -98,10 +130,9 @@ async def check_session_limit(session: AsyncSession, agent_id: str) -> None:
     agent = await session.get(Agent, agent_id)
     if not agent:
         raise RateLimitError("Unknown agent")
-
-    await _maybe_reset(agent)
-    _maybe_raise(agent, agent.session_count_today, agent.daily_session_limit,
-                 "session report", date.today().isoformat())
+    await _reserve_daily_limit(
+        session, agent_id, "session_count_today", Config.load().sessions_per_day, "session report"
+    )
 
 
 async def check_handoff_limit(session: AsyncSession, agent_id: str) -> None:
@@ -109,10 +140,9 @@ async def check_handoff_limit(session: AsyncSession, agent_id: str) -> None:
     agent = await session.get(Agent, agent_id)
     if not agent:
         raise RateLimitError("Unknown agent")
-
-    await _maybe_reset(agent)
-    _maybe_raise(agent, agent.handoff_count_today, agent.daily_handoff_limit,
-                 "handoff", date.today().isoformat())
+    await _reserve_daily_limit(
+        session, agent_id, "handoff_count_today", Config.load().handoffs_per_day, "handoff"
+    )
 
 
 # ── Incrementers ─────────────────────────────────────────────────────────────

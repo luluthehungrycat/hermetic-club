@@ -1,37 +1,41 @@
-"""Agent registration and authentication routes."""
+"""Agent registration, enrollment, authentication, and lifecycle routes."""
 
 from __future__ import annotations
 
-import ast
-import hashlib
-import json
-import os
+import hmac
 import secrets
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Header
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Header, HTTPException
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Config
 from ..database import get_session
-from ..models import Agent
+from ..models import Agent, PendingEnrollment
+from ..services.security import digest, json_array, unseal, valid_webhook_url
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 
-# ── Auth dependency ──────────────────────────────────────────────────────────
+def _user_auth(authorization: str) -> None:
+    cfg = Config.load()
+    if not cfg.secret_key or cfg.secret_key == "generate-a-strong-random-secret-here":
+        raise HTTPException(status_code=503, detail="Server secret is required")
+    if not authorization.startswith("Bearer ") or not hmac.compare_digest(
+        authorization.removeprefix("Bearer "), cfg.secret_key
+    ):
+        raise HTTPException(status_code=401, detail="Invalid User authorization")
 
 
 async def verify_agent(
     authorization: str = Header(""),
     session: AsyncSession = Depends(get_session),
 ) -> Agent:
-    """Verify API key and return the agent. Used as a dependency."""
+    """Verify API key and return the active agent."""
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-    api_key = authorization[7:]
-    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-
+    key_hash = digest(authorization[7:])
     result = await session.execute(select(Agent).where(Agent.api_key_hash == key_hash))
     agent = result.scalar_one_or_none()
     if not agent:
@@ -41,84 +45,8 @@ async def verify_agent(
     return agent
 
 
-# ── Routes ───────────────────────────────────────────────────────────────────
-
-
-@router.post("/register")
-async def register_agent(
-    name: str,
-    display_name: str = "",
-    device: str = "",
-    profile: str = "",
-    categories: str = "[]",
-    roles: str = "[]",
-    min_body_length: int = 200,
-    body_preview_length: int = 300,
-    verbosity_instructions: str = "",
-    webhook_url: str = "",
-    authorization: str = Header(""),
-    session: AsyncSession = Depends(get_session),
-):
-    """Register a new agent. Requires the user secret_key as Bearer token.
-
-    Returns an API key — save it, it won't be shown again.
-    """
-    # Require user-level auth for registration to prevent rogue agents
-    cfg = Config.load()
-    if cfg.secret_key:
-        if not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing Authorization header")
-        token = authorization.removeprefix("Bearer ")
-        if token != cfg.secret_key:
-            raise HTTPException(status_code=401, detail="Invalid user secret")
-
-    existing = await session.execute(select(Agent).where(Agent.name == name))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail=f"Agent '{name}' already registered")
-
-    api_key = f"hc_{secrets.token_urlsafe(32)}"
-    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-
-    # Normalize CLI list representations to JSON before persisting.  The
-    # database and authenticated profile route both expect JSON arrays.
-    try:
-        categories = json.dumps(ast.literal_eval(categories)) if categories.startswith("[") else categories
-    except (ValueError, SyntaxError):
-        raise HTTPException(status_code=400, detail="categories must be a valid JSON array")
-    try:
-        roles = json.dumps(ast.literal_eval(roles)) if roles.startswith("[") else roles
-    except (ValueError, SyntaxError):
-        raise HTTPException(status_code=400, detail="roles must be a valid JSON array")
-
-    agent = Agent(
-        name=name,
-        display_name=display_name or name,
-        device=device,
-        profile=profile,
-        api_key_hash=key_hash,
-        categories=categories,
-        roles=roles,
-        min_body_length=min_body_length,
-        body_preview_length=body_preview_length,
-        verbosity_instructions=verbosity_instructions,
-        webhook_url=webhook_url,
-    )
-    session.add(agent)
-    await session.commit()
-
-    return {
-        "agent_id": agent.id,
-        "name": agent.name,
-        "api_key": api_key,  # Only returned once
-        "message": "Save this API key — it will not be shown again.",
-    }
-
-
-@router.get("/me")
-async def get_me(agent: Agent = Depends(verify_agent)):
-    """Return the authenticated agent's profile."""
+def _agent_payload(agent: Agent) -> dict:
     import json
-
     return {
         "id": agent.id,
         "name": agent.name,
@@ -135,34 +63,136 @@ async def get_me(agent: Agent = Depends(verify_agent)):
         "reply_count_today": agent.reply_count_today,
         "session_count_today": agent.session_count_today,
         "handoff_count_today": agent.handoff_count_today,
-        "min_body_length": agent.min_body_length,
-        "body_preview_length": agent.body_preview_length,
-        "verbosity_instructions": agent.verbosity_instructions,
-        "webhook_url": agent.webhook_url,
         "is_active": agent.is_active,
         "created_at": agent.created_at.isoformat() if agent.created_at else "",
-        "last_seen_at": agent.last_seen_at.isoformat() if agent.last_seen_at else "",
     }
+
+
+@router.post("/register")
+async def register_agent(
+    name: str,
+    display_name: str = "",
+    device: str = "",
+    profile: str = "",
+    categories: str = "[]",
+    roles: str = "[]",
+    webhook_url: str = "",
+    authorization: str = Header(""),
+    session: AsyncSession = Depends(get_session),
+):
+    """Create a pending enrollment; only an explicit legacy flag returns a key."""
+    cfg = Config.load()
+    if cfg.legacy_registration:
+        _user_auth(authorization)
+    if not name or len(name) > 128 or any(c.isspace() for c in name):
+        raise HTTPException(status_code=400, detail="name must be a non-empty token")
+    if webhook_url and not valid_webhook_url(webhook_url, cfg.webhook_allowed_hosts):
+        raise HTTPException(status_code=400, detail="Webhook URL host is not allowlisted")
+    try:
+        categories_json = json_array(categories)
+        roles_json = json_array(roles)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="categories and roles must be JSON arrays")
+    existing = await session.execute(select(Agent).where(Agent.name == name))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Agent '{name}' already registered")
+    pending = await session.execute(
+        select(PendingEnrollment).where(
+            PendingEnrollment.name == name, PendingEnrollment.status == "pending"
+        )
+    )
+    if pending.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Enrollment for '{name}' is already pending")
+
+    enrollment_token = f"hc_enroll_{secrets.token_urlsafe(32)}"
+    enrollment = PendingEnrollment(
+        name=name,
+        display_name=display_name or name,
+        device=device,
+        profile=profile,
+        categories=categories_json,
+        roles=roles_json,
+        webhook_url=webhook_url,
+        token_hash=digest(enrollment_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+    )
+    session.add(enrollment)
+    await session.commit()
+    await session.refresh(enrollment)
+
+    if cfg.legacy_registration:
+        api_key = f"hc_{secrets.token_urlsafe(32)}"
+        agent = Agent(
+            name=name, display_name=display_name or name, device=device, profile=profile,
+            api_key_hash=digest(api_key), categories=categories_json, roles=roles_json,
+            webhook_url=webhook_url,
+        )
+        session.add(agent)
+        enrollment.status = "approved"
+        enrollment.approved_at = datetime.now(timezone.utc)
+        enrollment.approved_agent_id = agent.id
+        await session.commit()
+        return {"agent_id": agent.id, "name": name, "api_key": api_key, "legacy": True}
+
+    return {
+        "enrollment_id": enrollment.id,
+        "name": name,
+        "enrollment_token": enrollment_token,
+        "approval_code": enrollment_token.removeprefix("hc_enroll_")[:12],
+        "expires_at": enrollment.expires_at.isoformat(),
+        "status": "pending",
+    }
+
+
+@router.get("/enrollment/status")
+async def enrollment_status(
+    enrollment_token: str,
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(
+        select(PendingEnrollment).where(PendingEnrollment.token_hash == digest(enrollment_token))
+    )
+    enrollment = result.scalar_one_or_none()
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    expires = enrollment.expires_at.replace(tzinfo=timezone.utc) if enrollment.expires_at.tzinfo is None else enrollment.expires_at
+    if enrollment.status == "pending" and expires <= datetime.now(timezone.utc):
+        enrollment.status = "expired"
+        await session.commit()
+    response = {"status": enrollment.status, "name": enrollment.name}
+    if enrollment.status == "approved":
+        cfg = Config.load()
+        if not cfg.secret_key:
+            raise HTTPException(status_code=503, detail="Server secret is required for delivery")
+        api_key = unseal(
+            enrollment.credential_ciphertext, cfg.secret_key, enrollment_token
+        )
+        claim = await session.execute(
+            update(PendingEnrollment)
+            .where(
+                PendingEnrollment.id == enrollment.id,
+                PendingEnrollment.status == "approved",
+                PendingEnrollment.credential_delivered.is_(False),
+            )
+            .values(credential_delivered=True)
+        )
+        if claim.rowcount != 1:
+            await session.rollback()
+            return response
+        await session.commit()
+        response["api_key"] = api_key
+    return response
+
+
+@router.get("/me")
+async def get_me(agent: Agent = Depends(verify_agent)):
+    return _agent_payload(agent)
 
 
 @router.get("/list")
 async def list_agents(session: AsyncSession = Depends(get_session)):
-    """Public list of active agents (no auth required for browsing)."""
-    result = await session.execute(
-        select(Agent).where(Agent.is_active == True).order_by(Agent.name)
-    )
-    agents = result.scalars().all()
-    return [
-        {
-            "id": a.id,
-            "name": a.name,
-            "display_name": a.display_name,
-            "device": a.device,
-            "categories": a.categories,
-            "roles": a.roles,
-        }
-        for a in agents
-    ]
+    result = await session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.name))
+    return [_agent_payload(agent) for agent in result.scalars().all()]
 
 
 @router.patch("/settings")
@@ -174,7 +204,6 @@ async def update_agent_settings(
     agent: Agent = Depends(verify_agent),
     session: AsyncSession = Depends(get_session),
 ):
-    """Update the authenticated agent's verbosity settings and webhook URL."""
     if min_body_length is not None:
         agent.min_body_length = min_body_length
     if body_preview_length is not None:
@@ -182,11 +211,9 @@ async def update_agent_settings(
     if verbosity_instructions is not None:
         agent.verbosity_instructions = verbosity_instructions
     if webhook_url is not None:
+        cfg = Config.load()
+        if webhook_url and not valid_webhook_url(webhook_url, cfg.webhook_allowed_hosts):
+            raise HTTPException(status_code=400, detail="Webhook URL host is not allowlisted")
         agent.webhook_url = webhook_url
     await session.commit()
-    return {
-        "min_body_length": agent.min_body_length,
-        "body_preview_length": agent.body_preview_length,
-        "verbosity_instructions": agent.verbosity_instructions,
-        "webhook_url": agent.webhook_url,
-    }
+    return _agent_payload(agent)
