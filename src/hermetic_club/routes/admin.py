@@ -4,7 +4,7 @@ from __future__ import annotations
 import hmac
 import json
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from sqlalchemy import select, update
@@ -14,8 +14,19 @@ from ..config import Config
 from ..database import get_session
 from ..models import Agent, ArtifactRecord, PendingEnrollment
 from ..services.security import digest, seal, valid_forgejo_origin
+from .agents import _agent_payload
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+def _admin_agent_payload(agent: Agent) -> dict:
+    return {
+        **_agent_payload(agent),
+        "is_development": agent.is_development,
+        "min_body_length": agent.min_body_length,
+        "body_preview_length": agent.body_preview_length,
+        "verbosity_instructions": agent.verbosity_instructions,
+    }
 
 
 async def verify_user(authorization: str = Header("")) -> None:
@@ -30,8 +41,8 @@ async def verify_user(authorization: str = Header("")) -> None:
 
 @router.patch("/agents/{name}/settings")
 async def update_agent_settings_admin(
-    name: str, min_body_length: int | None = Body(None),
-    body_preview_length: int | None = Body(None), verbosity_instructions: str | None = Body(None),
+    name: str, min_body_length: int | None = Body(None, ge=50, le=2000),
+    body_preview_length: int | None = Body(None, ge=100, le=2000), verbosity_instructions: str | None = Body(None, max_length=4000),
     _=Depends(verify_user), session: AsyncSession = Depends(get_session),
 ):
     result = await session.execute(select(Agent).where(Agent.name == name))
@@ -63,8 +74,8 @@ async def update_agent_roles_admin(
         parsed_roles = json.loads(roles)
         parsed_categories = json.loads(categories)
         if not isinstance(parsed_roles, list) or not isinstance(parsed_categories, list):
-            raise ValueError
-    except (json.JSONDecodeError, ValueError):
+            raise TypeError
+    except (json.JSONDecodeError, TypeError):
         raise HTTPException(status_code=400, detail="roles and categories must be JSON arrays")
     agent.roles = json.dumps(parsed_roles)
     agent.categories = json.dumps(parsed_categories)
@@ -72,13 +83,35 @@ async def update_agent_roles_admin(
     return {"name": agent.name, "roles": parsed_roles, "categories": parsed_categories}
 
 
+@router.patch("/agents/{name}/visibility")
+async def update_agent_visibility(
+    name: str,
+    is_development: bool = Body(..., embed=True),
+    _=Depends(verify_user),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(Agent).where(Agent.name == name))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    agent.is_development = is_development
+    await session.commit()
+    return {"name": agent.name, "is_development": agent.is_development}
+
+
+@router.get("/agents")
+async def list_agents_admin(_=Depends(verify_user), session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Agent).order_by(Agent.name))
+    return [_admin_agent_payload(agent) for agent in result.scalars().all()]
+
+
 @router.get("/enrollments")
 async def list_pending_enrollments(_=Depends(verify_user), session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(PendingEnrollment).where(PendingEnrollment.status == "pending").order_by(PendingEnrollment.created_at))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     rows = []
     for item in result.scalars().all():
-        expires = item.expires_at.replace(tzinfo=timezone.utc) if item.expires_at.tzinfo is None else item.expires_at
+        expires = item.expires_at.replace(tzinfo=UTC) if item.expires_at.tzinfo is None else item.expires_at
         if expires <= now:
             item.status = "expired"
         rows.append({"id": item.id, "name": item.name, "display_name": item.display_name,
@@ -113,15 +146,15 @@ async def approve_enrollment(
     if claim.rowcount != 1:
         raise HTTPException(status_code=409, detail="Enrollment is not pending")
     enrollment.status = "approving"
-    expires = enrollment.expires_at.replace(tzinfo=timezone.utc) if enrollment.expires_at.tzinfo is None else enrollment.expires_at
-    if expires <= datetime.now(timezone.utc):
+    expires = enrollment.expires_at.replace(tzinfo=UTC) if enrollment.expires_at.tzinfo is None else enrollment.expires_at
+    if expires <= datetime.now(UTC):
         enrollment.status = "expired"
         await session.commit()
         raise HTTPException(status_code=409, detail="Enrollment has expired")
     duplicate = await session.execute(select(Agent).where(Agent.name == enrollment.name))
     if duplicate.scalar_one_or_none():
         enrollment.status = "rejected"
-        enrollment.rejected_at = datetime.now(timezone.utc)
+        enrollment.rejected_at = datetime.now(UTC)
         await session.commit()
         raise HTTPException(status_code=409, detail="Agent name already exists")
     api_key = f"hc_{secrets.token_urlsafe(32)}"
@@ -132,7 +165,7 @@ async def approve_enrollment(
     await session.flush()
     enrollment.status = "approved"
     enrollment.approved_agent_id = agent.id
-    enrollment.approved_at = datetime.now(timezone.utc)
+    enrollment.approved_at = datetime.now(UTC)
     enrollment.credential_ciphertext = seal(api_key, cfg.secret_key, enrollment_token)
     await session.commit()
     return {"id": enrollment.id, "agent_id": agent.id, "name": agent.name, "status": "approved"}
@@ -146,7 +179,7 @@ async def reject_enrollment(enrollment_id: str, _=Depends(verify_user), session:
             PendingEnrollment.id == enrollment_id,
             PendingEnrollment.status == "pending",
         )
-        .values(status="rejected", rejected_at=datetime.now(timezone.utc))
+        .values(status="rejected", rejected_at=datetime.now(UTC))
     )
     if claim.rowcount != 1:
         raise HTTPException(status_code=409, detail="Enrollment is not pending")
@@ -201,7 +234,7 @@ async def activate_artifact(artifact_id: str, _=Depends(verify_user), session: A
         raise HTTPException(status_code=404, detail="Artifact record not found")
     item.approved_by_user = True
     item.approved_by_identity = "user"
-    item.approved_at = datetime.now(timezone.utc)
+    item.approved_at = datetime.now(UTC)
     item.activated = True
     await session.commit()
     return {"id": item.id, "activated": True, "manifest": json.loads(item.manifest)}

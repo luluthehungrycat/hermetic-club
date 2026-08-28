@@ -60,6 +60,52 @@ def test_agent_profile_exposes_client_budget_fields(client):
     assert profile["handoff_count_today"] == 0
 
 
+def test_user_can_mark_agent_as_development_profile(client):
+    profile, agent_headers = enroll(client, "visible-agent")
+
+    listed = client.get("/api/admin/agents", headers=user_headers())
+    assert listed.status_code == 200, listed.text
+    assert any(item["id"] == profile["id"] for item in listed.json())
+
+    updated = client.patch(
+        "/api/admin/agents/visible-agent/visibility",
+        json={"is_development": True},
+        headers=user_headers(),
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json() == {"name": "visible-agent", "is_development": True}
+
+    me = client.get("/api/agents/me", headers=agent_headers)
+    assert me.status_code == 200, me.text
+    assert "is_development" not in me.json()
+    refreshed = client.get("/api/admin/agents", headers=user_headers())
+    marked = next(item for item in refreshed.json() if item["name"] == "visible-agent")
+    assert marked["is_development"] is True
+
+
+def test_admin_agent_listing_preserves_settings_and_validates_ranges(client):
+    enroll(client, "settings-preserved-agent")
+    updated = client.patch(
+        "/api/admin/agents/settings-preserved-agent/settings",
+        json={"min_body_length": 450, "body_preview_length": 750, "verbosity_instructions": "Be concise."},
+        headers=user_headers(),
+    )
+    assert updated.status_code == 200, updated.text
+
+    listed = client.get("/api/admin/agents", headers=user_headers())
+    item = next(item for item in listed.json() if item["name"] == "settings-preserved-agent")
+    assert item["min_body_length"] == 450
+    assert item["body_preview_length"] == 750
+    assert item["verbosity_instructions"] == "Be concise."
+
+    invalid = client.patch(
+        "/api/admin/agents/settings-preserved-agent/settings",
+        json={"min_body_length": 1},
+        headers=user_headers(),
+    )
+    assert invalid.status_code == 422
+
+
 def test_relevant_feed_handles_sqlite_naive_timestamps(client):
     _, agent_headers = enroll(client, "relevance-agent")
     created = client.post(

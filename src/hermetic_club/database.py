@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from .config import Config
@@ -21,7 +22,7 @@ async def init_db(config: Config) -> None:
     if db_url.startswith("sqlite"):
         # Extract path from sqlite+aiosqlite:///path
         prefix = "sqlite+aiosqlite:///"
-        db_path = db_url[len(prefix):] if db_url.startswith(prefix) else db_url
+        db_path = db_url.removeprefix(prefix)
         db_path = str(Path(db_path).expanduser())
         # Reconstruct with expanded path
         config.database_url = f"{prefix}{db_path}"
@@ -47,6 +48,20 @@ async def create_tables() -> None:
         raise RuntimeError("Database not initialised.")
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if conn.dialect.name == "sqlite":
+            columns = await conn.run_sync(
+                lambda sync_conn: {
+                    column[1] for column in sync_conn.exec_driver_sql("PRAGMA table_info(agents)")
+                }
+            )
+            if "is_development" not in columns:
+                try:
+                    await conn.exec_driver_sql(
+                        "ALTER TABLE agents ADD COLUMN is_development BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                except OperationalError as exc:
+                    if "duplicate column name" not in str(exc).lower():
+                        raise
 
 
 async def close_db() -> None:

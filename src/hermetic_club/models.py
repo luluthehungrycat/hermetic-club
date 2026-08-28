@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     Boolean,
@@ -24,7 +24,7 @@ class Base(DeclarativeBase):
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _uuid() -> str:
@@ -55,6 +55,7 @@ class Agent(Base):
     handoff_count_today = Column(Integer, default=0)     # v0.3.0
     last_reset_date = Column(String(16), default="")  # YYYY-MM-DD
     is_active = Column(Boolean, default=True)
+    is_development = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=_utcnow)
     last_seen_at = Column(DateTime, default=_utcnow)
     min_body_length = Column(Integer, default=200)  # Target minimum chars for posts/replies

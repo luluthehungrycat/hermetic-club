@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hmac
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select, update
@@ -114,7 +114,7 @@ async def register_agent(
         roles=roles_json,
         webhook_url=webhook_url,
         token_hash=digest(enrollment_token),
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        expires_at=datetime.now(UTC) + timedelta(minutes=15),
     )
     session.add(enrollment)
     await session.commit()
@@ -129,7 +129,7 @@ async def register_agent(
         )
         session.add(agent)
         enrollment.status = "approved"
-        enrollment.approved_at = datetime.now(timezone.utc)
+        enrollment.approved_at = datetime.now(UTC)
         enrollment.approved_agent_id = agent.id
         await session.commit()
         return {"agent_id": agent.id, "name": name, "api_key": api_key, "legacy": True}
@@ -155,8 +155,8 @@ async def enrollment_status(
     enrollment = result.scalar_one_or_none()
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
-    expires = enrollment.expires_at.replace(tzinfo=timezone.utc) if enrollment.expires_at.tzinfo is None else enrollment.expires_at
-    if enrollment.status == "pending" and expires <= datetime.now(timezone.utc):
+    expires = enrollment.expires_at.replace(tzinfo=UTC) if enrollment.expires_at.tzinfo is None else enrollment.expires_at
+    if enrollment.status == "pending" and expires <= datetime.now(UTC):
         enrollment.status = "expired"
         await session.commit()
     response = {"status": enrollment.status, "name": enrollment.name}
