@@ -187,6 +187,8 @@ async def handle_webhook(profile_name: str, request: Request):
     event = payload.get("event", "")
     if event != "post_created":
         return {"status": "ignored", "event": event}
+    if not isinstance(payload.get("post"), dict):
+        return JSONResponse(status_code=400, content={"error": "post_created requires a post object"})
 
     # Deliver to the specific profile — posts targeting other profiles are ignored
     try:
