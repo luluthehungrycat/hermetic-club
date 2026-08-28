@@ -27,21 +27,25 @@ Environment variables:
   HC_BRIDGE_PORT (default: 8766)
   HC_HERMES_PROFILE (default: "default" — fallback for legacy endpoint)
   HC_DELIVER_TO (default: "local" — local, telegram, tui)
-  HC_WEBHOOK_SECRET (optional — shared secret to verify webhook origin)
+  HC_WEBHOOK_SECRET (required — shared secret to verify webhook origin)
 """
 
 from __future__ import annotations
 
 import asyncio
+import hmac
+import json
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 try:
-    from fastapi import FastAPI, Request
     import uvicorn
+    from fastapi import FastAPI, Request
+    from fastapi.responses import JSONResponse
 except ImportError:
     print("Install: pip install fastapi uvicorn httpx", file=sys.stderr)
     sys.exit(1)
@@ -56,6 +60,7 @@ WEBHOOK_SECRET = os.environ.get("HC_WEBHOOK_SECRET", "")
 HERMES_PROFILE = os.environ.get("HC_HERMES_PROFILE", "default")
 DELIVER_TO = os.environ.get("HC_DELIVER_TO", "local")  # telegram | tui | local
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser()
+MAX_WEBHOOK_BODY_BYTES = 256 * 1024
 
 
 def _profile_root(profile: str) -> Path:
@@ -69,7 +74,7 @@ def _valid_profile_name(profile: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._-]+", profile)) and profile not in {".", ".."}
 
 
-async def deliver_to_hermes(payload: dict[str, Any], profile: str = "") -> None:
+def deliver_to_hermes(payload: dict[str, Any], profile: str = "") -> None:
     """Deliver the webhook payload to the local Hermes Agent instance.
 
     Modes:
@@ -106,18 +111,28 @@ async def deliver_to_hermes(payload: dict[str, Any], profile: str = "") -> None:
             raise ValueError("invalid Hermes profile path")
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"{post_id}.md"
-        with out_path.open("w", encoding="utf-8") as f:
-            f.write(prompt)
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{post_id}.", suffix=".tmp", dir=out_dir)
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(prompt)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, out_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
         print(f"  → [{active_profile}] Wrote webhook to {out_path}")
 
     elif DELIVER_TO == "telegram":
         import subprocess
-        subprocess.Popen(
+        subprocess.run(
             ["hermes", "send-message", "--platform", "telegram",
              "--message", prompt,
              "--profile", active_profile],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            check=True,
+            timeout=30,
         )
         print(f"  → [{active_profile}] Sent to Hermes Telegram channel")
 
@@ -143,29 +158,41 @@ async def handle_webhook(profile_name: str, request: Request):
     This prevents all profiles on the same device from reacting to the same post.
     """
     if not _valid_profile_name(profile_name):
-        from fastapi.responses import JSONResponse
         return JSONResponse(status_code=400, content={"error": "Invalid profile"})
 
     if profile_name != HERMES_PROFILE:
-        from fastapi.responses import JSONResponse
         return JSONResponse(status_code=403, content={"error": "Profile is not served by this bridge"})
 
     # A public bridge must always authenticate webhook submissions.
     auth = request.headers.get("Authorization", "")
     if not WEBHOOK_SECRET:
-        from fastapi.responses import JSONResponse
         return JSONResponse(status_code=503, content={"error": "Webhook secret is not configured"})
-    if auth != f"Bearer {WEBHOOK_SECRET}":
-        from fastapi.responses import JSONResponse
+    if not hmac.compare_digest(auth, f"Bearer {WEBHOOK_SECRET}"):
         return JSONResponse(status_code=403, content={"error": "Invalid secret"})
 
-    payload = await request.json()
+    content_length = request.headers.get("content-length")
+    if content_length and (not content_length.isdigit() or int(content_length) > MAX_WEBHOOK_BODY_BYTES):
+        return JSONResponse(status_code=413, content={"error": "Webhook body is too large"})
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_WEBHOOK_BODY_BYTES:
+            return JSONResponse(status_code=413, content={"error": "Webhook body is too large"})
+    try:
+        payload = json.loads(bytes(body))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JSONResponse(status_code=400, content={"error": "Webhook body must be valid JSON"})
+    if not isinstance(payload, dict):
+        return JSONResponse(status_code=400, content={"error": "Webhook body must be a JSON object"})
     event = payload.get("event", "")
     if event != "post_created":
         return {"status": "ignored", "event": event}
 
     # Deliver to the specific profile — posts targeting other profiles are ignored
-    asyncio.ensure_future(deliver_to_hermes(payload, profile=profile_name))
+    try:
+        await asyncio.to_thread(deliver_to_hermes, payload, profile_name)
+    except Exception:  # noqa: BLE001 - delivery must fail closed
+        return JSONResponse(status_code=502, content={"error": "Webhook delivery failed"})
 
     return {"status": "ok", "event": event, "profile": profile_name}
 
@@ -189,9 +216,9 @@ def main():
     print(f"  Deliver mode: {DELIVER_TO}")
     print(f"  Hermes profile: {HERMES_PROFILE}")
     if WEBHOOK_SECRET:
-        print(f"  Webhook secret: configured")
+        print("  Webhook secret: configured")
     else:
-        print(f"  Webhook secret: NOT SET (anyone can push)")
+        print("  Webhook secret: NOT SET (webhooks will be rejected)")
     print()
     uvicorn.run(app, host="0.0.0.0", port=BRIDGE_PORT, log_level="info")
 
