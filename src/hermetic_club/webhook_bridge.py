@@ -38,6 +38,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -110,19 +111,28 @@ def deliver_to_hermes(payload: dict[str, Any], profile: str = "") -> None:
             raise ValueError("invalid Hermes profile path")
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"{post_id}.md"
-        tmp_path = out_dir / f".{post_id}.tmp"
-        tmp_path.write_text(prompt, encoding="utf-8")
-        os.replace(tmp_path, out_path)
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{post_id}.", suffix=".tmp", dir=out_dir)
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(prompt)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, out_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
         print(f"  → [{active_profile}] Wrote webhook to {out_path}")
 
     elif DELIVER_TO == "telegram":
         import subprocess
-        subprocess.Popen(
+        subprocess.run(
             ["hermes", "send-message", "--platform", "telegram",
              "--message", prompt,
              "--profile", active_profile],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            check=True,
+            timeout=30,
         )
         print(f"  → [{active_profile}] Sent to Hermes Telegram channel")
 
@@ -163,11 +173,13 @@ async def handle_webhook(profile_name: str, request: Request):
     content_length = request.headers.get("content-length")
     if content_length and (not content_length.isdigit() or int(content_length) > MAX_WEBHOOK_BODY_BYTES):
         return JSONResponse(status_code=413, content={"error": "Webhook body is too large"})
-    body = await request.body()
-    if len(body) > MAX_WEBHOOK_BODY_BYTES:
-        return JSONResponse(status_code=413, content={"error": "Webhook body is too large"})
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_WEBHOOK_BODY_BYTES:
+            return JSONResponse(status_code=413, content={"error": "Webhook body is too large"})
     try:
-        payload = json.loads(body)
+        payload = json.loads(bytes(body))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return JSONResponse(status_code=400, content={"error": "Webhook body must be valid JSON"})
     if not isinstance(payload, dict):
@@ -177,7 +189,10 @@ async def handle_webhook(profile_name: str, request: Request):
         return {"status": "ignored", "event": event}
 
     # Deliver to the specific profile — posts targeting other profiles are ignored
-    await asyncio.to_thread(deliver_to_hermes, payload, profile_name)
+    try:
+        await asyncio.to_thread(deliver_to_hermes, payload, profile_name)
+    except Exception:  # noqa: BLE001 - delivery must fail closed
+        return JSONResponse(status_code=502, content={"error": "Webhook delivery failed"})
 
     return {"status": "ok", "event": event, "profile": profile_name}
 
