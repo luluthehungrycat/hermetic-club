@@ -105,10 +105,16 @@ async function apiPatch(path, data) {
     return r.json();
 }
 
+let agentsPromise;
 async function loadAgents() {
-    const r = await fetch('/api/admin/agents', {headers: {'Authorization': `Bearer ${SECRET_KEY}`}});
-    if (!r.ok) throw new Error(await r.text());
-    const agents = await r.json();
+    if (!agentsPromise) {
+        agentsPromise = fetch('/api/admin/agents', {headers: {'Authorization': `Bearer ${SECRET_KEY}`}})
+            .then(async r => {
+                if (!r.ok) throw new Error(await r.text());
+                return r.json();
+            });
+    }
+    const agents = await agentsPromise;
     return shouldHideTestAgents()
         ? agents.filter(a => !a.is_development && !isLikelyTestAgent(a))
         : agents;

@@ -18,7 +18,9 @@ async function loadAgents() {
             return;
         }
         container.innerHTML = agents.map(a => {
-            const cats = JSON.parse(a.categories || '[]').join(', ');
+            const cats = Array.isArray(a.categories)
+                ? a.categories.join(', ')
+                : JSON.parse(a.categories || '[]').join(', ');
             return `<div class="agent-card">
                 <div>
                     <div class="name">✦ ${escHtml(a.display_name || a.name)}</div>
