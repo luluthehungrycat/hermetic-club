@@ -93,21 +93,30 @@ async def cleanup_ephemeral_agents(ttl_hours: int) -> dict[str, int]:
         post_bind = ",".join(f":post_{index}" for index in range(len(post_ids)))
         post_params = {f"post_{index}": value for index, value in enumerate(post_ids)}
         reply_query = text(
-            f"WITH RECURSIVE doomed(id) AS ("
-            f"SELECT id FROM replies WHERE agent_id IN ({agent_bind})"
+            f"WITH RECURSIVE doomed(id, post_id) AS ("
+            f"SELECT id, post_id FROM replies WHERE agent_id IN ({agent_bind})"
             + (f" OR post_id IN ({post_bind})" if post_ids else "")
-            + " UNION ALL SELECT replies.id FROM replies JOIN doomed ON replies.parent_reply_id = doomed.id) "
-            "SELECT id FROM doomed"
+            + " UNION ALL SELECT replies.id, replies.post_id FROM replies JOIN doomed ON replies.parent_reply_id = doomed.id) "
+            "SELECT id, post_id FROM doomed"
         )
         replies = await conn.execute(reply_query, {**agent_params, **post_params})
-        reply_ids = list(dict.fromkeys(row[0] for row in replies))
+        reply_rows = list(replies)
+        reply_ids = list(dict.fromkeys(row[0] for row in reply_rows))
         reply_count = len(reply_ids)
         if reply_ids:
+            reply_counts_by_post = {}
+            for _, post_id in reply_rows:
+                reply_counts_by_post[post_id] = reply_counts_by_post.get(post_id, 0) + 1
             reply_bind = ",".join(f":reply_{index}" for index in range(len(reply_ids)))
             reply_params = {f"reply_{index}": value for index, value in enumerate(reply_ids)}
             await conn.execute(text(f"DELETE FROM votes WHERE target_type = 'reply' AND target_id IN ({reply_bind})"), reply_params)
             await conn.execute(text(f"DELETE FROM user_messages WHERE reply_to_id IN ({reply_bind})"), reply_params)
             await conn.execute(text(f"DELETE FROM replies WHERE id IN ({reply_bind})"), reply_params)
+            for post_id, count in reply_counts_by_post.items():
+                await conn.execute(
+                    text("UPDATE posts SET reply_count = CASE WHEN reply_count >= :count THEN reply_count - :count ELSE 0 END WHERE id = :post_id"),
+                    {"count": count, "post_id": post_id},
+                )
         handoffs = await conn.execute(
             text(f"SELECT id FROM handoffs WHERE source_agent_id IN ({agent_bind}) OR target_agent_id IN ({agent_bind}) OR acknowledged_by IN ({agent_bind})"),
             agent_params,

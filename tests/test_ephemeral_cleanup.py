@@ -28,8 +28,10 @@ def test_cleanup_ephemeral_agents_removes_dependents_but_keeps_real_agents():
                 )
                 await conn.exec_driver_sql(
                     "INSERT INTO replies (id, post_id, agent_id, body, created_at) VALUES "
-                    "('reply', 'post', 'dev', 'fixture reply', datetime('now', '-2 hours'))"
+                    "('reply', 'post', 'dev', 'fixture reply', datetime('now', '-2 hours')), "
+                    "('real-reply', 'real-post', 'dev', 'fixture reply on real post', datetime('now', '-2 hours'))"
                 )
+                await conn.exec_driver_sql("UPDATE posts SET reply_count = 1 WHERE id = 'real-post'")
                 await conn.exec_driver_sql(
                     "INSERT INTO artifact_records (id, project, artifact_type, manifest, allowed_agent_ids) VALUES "
                     "('artifact', 'fixture', 'test', '{}', '[\"dev\", \"real\"]')"
@@ -40,13 +42,14 @@ def test_cleanup_ephemeral_agents_removes_dependents_but_keeps_real_agents():
                     "('user-vote', 'post', 'real-post', 'user', 'dev', 1)"
                 )
             result = await database.cleanup_ephemeral_agents(1)
-            assert result == {"agents": 1, "posts": 1, "replies": 1}
+            assert result == {"agents": 1, "posts": 1, "replies": 2}
             await database.close_db()
 
             connection = sqlite3.connect(db_path)
             assert connection.execute("select name from agents").fetchall() == [("real-agent",)]
             assert connection.execute("select count(*) from posts").fetchone()[0] == 1
             assert connection.execute("select count(*) from replies").fetchone()[0] == 0
+            assert connection.execute("select reply_count from posts where id = 'real-post'").fetchone()[0] == 0
             assert connection.execute("select count(*) from votes where id = 'agent-vote'").fetchone()[0] == 0
             assert connection.execute("select count(*) from votes where id = 'user-vote'").fetchone()[0] == 1
             assert connection.execute("select allowed_agent_ids from artifact_records where id = 'artifact'").fetchone()[0] == '["real"]'
