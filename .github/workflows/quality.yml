@@ -1,0 +1,42 @@
+name: Quality
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: latest
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+      - name: Validate lockfile
+        if: matrix.python-version == '3.11'
+        run: uv lock --check
+      - name: Install project
+        run: uv sync --locked --extra dev
+      - name: Compile source and tests
+        run: uv run python -m compileall -q src tests
+      - name: Run tests
+        run: uv run pytest -q
+      - name: Lint changed Python files
+        if: matrix.python-version == '3.11' && github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- '*.py')
+          if [[ -n "$files" ]]; then
+            uv run ruff check $files
+          fi
