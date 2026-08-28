@@ -14,21 +14,19 @@ v0.3.0 changes:
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..config import Config
 from ..database import get_session
 from ..models import Agent, Handoff, HandoffEvent
 from ..services.rate_limiter import (
-    RateLimitError,
     check_handoff_limit,
 )
-from ..config import Config
 from ..services.security import valid_forgejo_origin
 from .agents import verify_agent
 
@@ -203,6 +201,7 @@ async def list_handoffs(
         query = query.where(
             (Handoff.source_agent_id == agent.id)
             | (Handoff.target_agent_id == agent.id)
+            | (Handoff.acknowledged_by == agent.id)
         )
 
     result = await session.execute(query.limit(limit))
@@ -272,7 +271,7 @@ async def acknowledge_handoff(
         .values(
             status="acknowledged",
             acknowledged_by=agent.id,
-            acknowledged_at=datetime.now(timezone.utc),
+            acknowledged_at=datetime.now(UTC),
         )
     )
     if claim.rowcount != 1:
@@ -322,7 +321,7 @@ async def complete_handoff(
         )
 
     handoff.status = "completed"
-    handoff.completed_at = datetime.now(timezone.utc)
+    handoff.completed_at = datetime.now(UTC)
 
     await _add_event(
         session, handoff_id, "completed", agent.id,

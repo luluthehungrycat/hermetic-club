@@ -36,6 +36,11 @@ def backup_database(database_url: str, destination: str | Path) -> Path:
         source_connection.backup(target_connection)
         target_connection.commit()
         os.replace(temporary, target)
+        directory_fd = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
     finally:
         target_connection.close()
         source_connection.close()

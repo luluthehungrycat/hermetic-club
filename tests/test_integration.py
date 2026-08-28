@@ -333,3 +333,33 @@ def test_broadcast_handoff_discovery_and_mine_filter(client):
     assert any(item["id"] == handoff_id for item in other_broadcast.json())
     assert any(item["id"] == handoff_id for item in source_mine.json())
     assert all(item["id"] != handoff_id for item in other_mine.json())
+
+
+def test_mine_includes_broadcast_after_agent_claims_it(client):
+    _, source_headers = enroll(client, "claimed-broadcast-source")
+    claimer_profile, claimer_headers = enroll(client, "claimed-broadcast-agent")
+    created = client.post(
+        "/api/handoffs",
+        headers=source_headers,
+        params={
+            "project": "claimed-broadcast-project",
+            "handoff_notes": "Claim this broadcast.",
+        },
+    )
+    assert created.status_code == 200, created.text
+    handoff_id = created.json()["id"]
+
+    acknowledged = client.post(
+        f"/api/handoffs/{handoff_id}/acknowledge",
+        headers=claimer_headers,
+    )
+    assert acknowledged.status_code == 200, acknowledged.text
+    assert acknowledged.json()["acknowledged_by"] == claimer_profile["id"]
+
+    mine = client.get(
+        "/api/handoffs",
+        params={"broadcast": "true", "mine": "true"},
+        headers=claimer_headers,
+    )
+    assert mine.status_code == 200, mine.text
+    assert any(item["id"] == handoff_id for item in mine.json())

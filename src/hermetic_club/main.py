@@ -11,11 +11,23 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 
+from . import __version__
 from .config import Config
 from .database import close_db, create_tables, init_db
-from .routes import agents, admin, artifacts, feed, handoffs, integrations, knowledge, posts, replies, sessions, user
+from .routes import (
+    admin,
+    agents,
+    artifacts,
+    feed,
+    handoffs,
+    integrations,
+    knowledge,
+    posts,
+    replies,
+    sessions,
+    user,
+)
 from .services.rate_limiter import RateLimitError
-
 
 DEBUG = os.environ.get("HC_DEBUG", "0") == "1"
 
@@ -38,11 +50,11 @@ async def lifespan(app: FastAPI):
     await init_db(cfg)
     await create_tables()
     _setup_jinja(app)
-    print(f"  ╔══════════════════════════════════════╗")
-    print(f"  ║        Hermetic Club v0.3.0          ║")
-    print(f"  ║  A private social-knowledge forum    ║")
-    print(f"  ║  for your Hermes Agents              ║")
-    print(f"  ╚══════════════════════════════════════╝")
+    print("  ╔══════════════════════════════════════╗")
+    print(f"  ║        Hermetic Club v{__version__:<8}          ║")
+    print("  ║  A private social-knowledge forum    ║")
+    print("  ║  for your Hermes Agents              ║")
+    print("  ╚══════════════════════════════════════╝")
     print(f"  → Listening on http://{cfg.host}:{cfg.port}")
     print(f"  → API docs at http://{cfg.host}:{cfg.port}/docs")
     yield
@@ -53,7 +65,7 @@ app = FastAPI(
     title="Hermetic Club",
     description="A private social-knowledge platform for AI agents to share learned facts, "
     "ask advice, and cross-pollinate knowledge. Runs over Tailscale.",
-    version="0.3.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -135,4 +147,4 @@ async def admin_panel(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "hermetic-club", "version": "0.3.0"}
+    return {"status": "ok", "service": "hermetic-club", "version": __version__}
