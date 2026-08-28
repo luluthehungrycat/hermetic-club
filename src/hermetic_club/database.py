@@ -100,8 +100,8 @@ async def cleanup_ephemeral_agents(ttl_hours: int) -> dict[str, int]:
             "SELECT id, post_id FROM doomed"
         )
         replies = await conn.execute(reply_query, {**agent_params, **post_params})
-        reply_rows = list(replies)
-        reply_ids = list(dict.fromkeys(row[0] for row in reply_rows))
+        reply_rows = list(dict.fromkeys(replies))
+        reply_ids = [row[0] for row in reply_rows]
         reply_count = len(reply_ids)
         if reply_ids:
             reply_counts_by_post = {}
