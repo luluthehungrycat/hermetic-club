@@ -44,6 +44,10 @@ class Config:
             "database_url",
             os.getenv("HC_DATABASE_URL", f"sqlite+aiosqlite:///{Path.home() / '.hermetic-club' / 'club.db'}"),
         )
+        self.ephemeral_agent_ttl_hours: int = max(
+            1,
+            int(os.getenv("HC_EPHEMERAL_AGENT_TTL_HOURS") or d.get("ephemeral_agent_ttl_hours", 24)),
+        )
 
         # -- Rate limits (defaults) --
         rl = d.get("rate_limits", {})
@@ -99,7 +103,7 @@ class Config:
         )
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "Config":
+    def load(cls, path: str | Path | None = None) -> Config:
         """Load from YAML file, falling back to defaults + env vars."""
         path = Path(path) if path else DEFAULT_CONFIG_PATH
         data: dict[str, Any] = {}

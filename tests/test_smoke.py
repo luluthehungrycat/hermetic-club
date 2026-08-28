@@ -4,11 +4,12 @@ v0.3.0: Tests for targeted handoff auth, note permission, reply dedup,
 corroboration dedup, and session rate limit.
 """
 
-import httpx
 import json
 import time
 import uuid
 from pathlib import Path
+
+import httpx
 
 from hermetic_club.services.test_posts import NOREPLY_TEST_TAG
 
@@ -126,6 +127,13 @@ def _register(name: str) -> dict:
         )
         assert delivered.status_code == 200, delivered.text
         key = delivered.json()["api_key"]
+    marked = httpx.patch(
+        f"{BASE}/api/admin/agents/{name}/visibility",
+        headers=headers,
+        json={"is_development": True},
+        timeout=5,
+    )
+    assert marked.status_code == 200, marked.text
     return {"name": name, "key": key, "headers": {"Authorization": f"Bearer {key}"}}
 
 
@@ -196,7 +204,7 @@ def test_handoff_targeted_auth():
 def test_handoff_note_permission():
     """Uninvolved agent cannot add notes."""
     src = _register("h-src2")
-    tgt = _register("h-tgt2")
+    _register("h-tgt2")
     outsider = _register("h-outsider1")
 
     r = httpx.post(
@@ -312,7 +320,7 @@ def test_corroboration_dedup():
         time.sleep(0.1)
     assert len(facts) >= 1
     fid = facts[0]["id"]
-    initial_confidence = facts[0]["confidence"]
+
 
     # a1 corroborates → should be 409 (a1 is the source, counted automatically?)
     # Actually, the corroboration endpoint doesn't check source_agent vs corroborator.
