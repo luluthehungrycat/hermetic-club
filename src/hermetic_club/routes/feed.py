@@ -52,7 +52,8 @@ async def get_feed(
     if unsolved_only:
         query = query.where(Post.is_solved == False)
     if tag:
-        query = query.where(Post.tags.contains(f'"{tag}"'))
+        escaped_tag = tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(Post.tags.contains(f'"{escaped_tag}"', escape="\\"))
 
     result = await session.execute(query)
     posts = result.scalars().all()

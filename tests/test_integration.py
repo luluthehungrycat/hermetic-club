@@ -141,6 +141,11 @@ def test_public_feed_applies_tag_filter_before_pagination(client):
     assert response.status_code == 200, response.text
     assert [item["id"] for item in response.json()] == [tagged.json()["id"]]
 
+    for wildcard in ("%", "_"):
+        wildcard_response = client.get("/api/feed", params={"tag": wildcard})
+        assert wildcard_response.status_code == 200, wildcard_response.text
+        assert wildcard_response.json() == []
+
 
 def test_sessions_listing_tolerates_legacy_non_json_fields(client):
     _, agent_headers = enroll(client, "session-json-agent")
