@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from sqlalchemy import event, text
@@ -86,7 +87,7 @@ async def cleanup_ephemeral_agents(ttl_hours: int) -> dict[str, int]:
             return {"agents": 0, "posts": 0, "replies": 0}
         agent_bind = ",".join(f":agent_{index}" for index in range(len(agent_ids)))
         agent_params = {f"agent_{index}": value for index, value in enumerate(agent_ids)}
-        await conn.execute(text(f"DELETE FROM votes WHERE voter_id IN ({agent_bind})"), agent_params)
+        await conn.execute(text(f"DELETE FROM votes WHERE voter_type = 'agent' AND voter_id IN ({agent_bind})"), agent_params)
         posts = await conn.execute(text(f"SELECT id FROM posts WHERE agent_id IN ({agent_bind})"), agent_params)
         post_ids = [row[0] for row in posts]
         post_bind = ",".join(f":post_{index}" for index in range(len(post_ids)))
@@ -100,6 +101,7 @@ async def cleanup_ephemeral_agents(ttl_hours: int) -> dict[str, int]:
         )
         replies = await conn.execute(reply_query, {**agent_params, **post_params})
         reply_ids = list(dict.fromkeys(row[0] for row in replies))
+        reply_count = len(reply_ids)
         if reply_ids:
             reply_bind = ",".join(f":reply_{index}" for index in range(len(reply_ids)))
             reply_params = {f"reply_{index}": value for index, value in enumerate(reply_ids)}
@@ -117,7 +119,6 @@ async def cleanup_ephemeral_agents(ttl_hours: int) -> dict[str, int]:
             await conn.execute(text(f"DELETE FROM handoff_events WHERE handoff_id IN ({handoff_bind})"), handoff_params)
             await conn.execute(text(f"DELETE FROM handoffs WHERE id IN ({handoff_bind})"), handoff_params)
         await conn.execute(text(f"DELETE FROM handoff_events WHERE agent_id IN ({agent_bind})"), agent_params)
-        reply_count = 0
         if post_ids:
             await conn.execute(text(f"DELETE FROM votes WHERE target_type = 'post' AND target_id IN ({post_bind})"), post_params)
             await conn.execute(text(f"DELETE FROM knowledge_facts WHERE post_id IN ({post_bind}) OR agent_id IN ({agent_bind})"), {**post_params, **agent_params})
@@ -125,6 +126,18 @@ async def cleanup_ephemeral_agents(ttl_hours: int) -> dict[str, int]:
             await conn.execute(text(f"DELETE FROM posts WHERE id IN ({post_bind})"), post_params)
         else:
             await conn.execute(text(f"DELETE FROM knowledge_facts WHERE agent_id IN ({agent_bind})"), agent_params)
+        artifacts = await conn.execute(text("SELECT id, allowed_agent_ids FROM artifact_records"))
+        for artifact_id, raw_allowlist in artifacts:
+            try:
+                allowlist = json.loads(raw_allowlist or "[]")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            cleaned = [agent_id for agent_id in allowlist if agent_id not in agent_ids]
+            if cleaned != allowlist:
+                await conn.execute(
+                    text("UPDATE artifact_records SET allowed_agent_ids = :allowlist WHERE id = :artifact_id"),
+                    {"allowlist": json.dumps(cleaned), "artifact_id": artifact_id},
+                )
         await conn.execute(text(f"DELETE FROM work_sessions WHERE agent_id IN ({agent_bind})"), agent_params)
         await conn.execute(text(f"UPDATE artifact_records SET exported_by = NULL WHERE exported_by IN ({agent_bind})"), agent_params)
         await conn.execute(text(f"UPDATE artifact_records SET imported_by = NULL WHERE imported_by IN ({agent_bind})"), agent_params)
