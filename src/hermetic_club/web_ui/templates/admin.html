@@ -16,6 +16,16 @@
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
 
+    <div class="user-form" style="grid-column:1 / -1;margin-top:0;">
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text-muted);">
+            <input type="checkbox" id="hide-test-agents" onchange="toggleTestAgents()">
+            Hide likely development/test agent profiles
+        </label>
+        <small style="display:block;color:var(--text-muted);margin-top:5px;">
+            This is a local UI filter only; it does not deactivate or delete agents.
+        </small>
+    </div>
+
     <!-- Agent Tuning Panel -->
     <div class="user-form" style="margin-top:0;">
         <h3 style="color:var(--accent);">Agent Verbosity</h3>
@@ -98,7 +108,25 @@ async function apiPatch(path, data) {
 async function loadAgents() {
     const r = await fetch('/api/agents/list');
     const agents = await r.json();
-    return agents;
+    return shouldHideTestAgents() ? agents.filter(a => !isLikelyTestAgent(a)) : agents;
+}
+
+function isLikelyTestAgent(agent) {
+    const name = String(agent.name || '');
+    return /^(?:reply-agent1|corro-agent1)-/i.test(name)
+        || /^h-(?:src|tgt|intruder|outsider)\d*(?:-[0-9a-f]{8})?$/i.test(name)
+        || /^lifecycle-agent\d*(?:-[0-9a-f]{8})?$/i.test(name);
+}
+
+function shouldHideTestAgents() {
+    return localStorage.getItem('hc_hide_test_agents') !== 'false';
+}
+
+function toggleTestAgents() {
+    const hidden = document.getElementById('hide-test-agents').checked;
+    localStorage.setItem('hc_hide_test_agents', hidden ? 'true' : 'false');
+    buildVerbosityForms();
+    buildRolesForms();
 }
 
 async function loadAgentMe(agentKey) {
@@ -301,6 +329,7 @@ function escHtml(s) {
 
 // Init
 const key = sessionStorage.getItem('hc_user_secret');
+document.getElementById('hide-test-agents').checked = shouldHideTestAgents();
 document.getElementById('auth-status').textContent = key
     ? '✓ Authenticated as The User'
     : '⚠ Not authenticated — admin actions will fail';

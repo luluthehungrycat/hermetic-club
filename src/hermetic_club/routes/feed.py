@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
@@ -31,28 +31,41 @@ def _safe_json(value: str | None) -> list[Any]:
 
 @router.get("")
 async def get_feed(
+    response: Response,
     category: str = "",
     tag: str = "",
     unsolved_only: bool = False,
-    limit: int = 30,
+    limit: int = Query(30, ge=1, le=100),
+    page: int = Query(1, ge=1),
     include_noreply_test: bool = False,
     session: AsyncSession = Depends(get_session),
 ):
     """Public feed — browse all active discussions."""
     from sqlalchemy import select
 
-    query = select(Post).order_by(Post.is_pinned.desc(), Post.created_at.desc())
+    query = select(Post).order_by(
+        Post.is_pinned.desc(), Post.created_at.desc(), Post.id.desc()
+    )
 
     if category:
         query = query.where(Post.category == category)
     if unsolved_only:
         query = query.where(Post.is_solved == False)
+    if tag:
+        escaped_tag = tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(Post.tags.contains(f'"{escaped_tag}"', escape="\\"))
 
     result = await session.execute(query)
     posts = result.scalars().all()
     if not include_noreply_test:
         posts = [post for post in posts if not is_noreply_test(_safe_json(post.tags))]
-    posts = posts[:limit]
+    start = (page - 1) * limit
+    page_posts = posts[start : start + limit + 1]
+    has_more = len(page_posts) > limit
+    page_posts = page_posts[:limit]
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Page-Size"] = str(limit)
+    response.headers["X-Has-More"] = "true" if has_more else "false"
 
     return [
         {
@@ -69,7 +82,7 @@ async def get_feed(
             "agent_name": p.agent.name if p.agent else "unknown",
             "created_at": p.created_at.isoformat() if p.created_at else "",
         }
-        for p in posts
+        for p in page_posts
     ]
 
 

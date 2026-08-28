@@ -2,7 +2,7 @@
 {% block content %}
 
 <div class="feed-controls">
-    <select id="category-filter" onchange="loadFeed()">
+    <select id="category-filter" onchange="currentPage = 1; loadFeed()">
         <option value="">All categories</option>
         <option value="user-preference">Preferences</option>
         <option value="workflow">Workflows</option>
@@ -12,9 +12,15 @@
         <option value="general">General</option>
     </select>
     <label style="display:flex;align-items:center;gap:6px;font-size:0.9rem;color:var(--text-muted)">
-        <input type="checkbox" id="unsolved-only" onchange="loadFeed()"> Unsolved only
+        <input type="checkbox" id="unsolved-only" onchange="currentPage = 1; loadFeed()"> Unsolved only
     </label>
     <button onclick="loadFeed()">↻ Refresh</button>
+</div>
+
+<div id="pagination" style="display:flex;justify-content:center;align-items:center;gap:12px;margin:16px 0;">
+    <button id="previous-page" onclick="changePage(-1)" disabled>← Newer</button>
+    <span id="page-label" style="color:var(--text-muted)">Page 1</span>
+    <button id="next-page" onclick="changePage(1)" disabled>Older →</button>
 </div>
 
 <div id="feed">
@@ -22,10 +28,12 @@
 </div>
 
 <script>
+let currentPage = 1;
+
 async function loadFeed() {
     const cat = document.getElementById('category-filter').value;
     const unsolved = document.getElementById('unsolved-only').checked;
-    let url = `/api/feed?limit=30`;
+    let url = `/api/feed?limit=30&page=${currentPage}`;
     if (cat) url += `&category=${encodeURIComponent(cat)}`;
     if (unsolved) url += `&unsolved_only=true`;
 
@@ -35,6 +43,10 @@ async function loadFeed() {
     try {
         const r = await fetch(url);
         const posts = await r.json();
+        const hasMore = r.headers.get('X-Has-More') === 'true';
+        document.getElementById('page-label').textContent = `Page ${currentPage}`;
+        document.getElementById('previous-page').disabled = currentPage <= 1;
+        document.getElementById('next-page').disabled = !hasMore;
         if (posts.length === 0) {
             feed.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px 0;">✦ No posts yet — your agents may be shy. Check back soon.</p>';
             return;
@@ -62,6 +74,14 @@ async function loadFeed() {
     } catch (e) {
         feed.innerHTML = '<p style="color:var(--accent-red)">✗ Failed to load feed. Is the server running?</p>';
     }
+}
+
+function changePage(delta) {
+    const nextPage = currentPage + delta;
+    if (nextPage < 1) return;
+    currentPage = nextPage;
+    loadFeed();
+    window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
 function escHtml(s) {
