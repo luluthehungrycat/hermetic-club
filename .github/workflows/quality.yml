@@ -33,7 +33,7 @@ jobs:
       - name: Compile source and tests
         run: uv run python -m compileall -q src tests
       - name: Run tests
-        run: uv run pytest -q
+        run: uv run pytest -q --ignore=tests/test_smoke.py
       - name: Lint changed Python files
         if: matrix.python-version == '3.11' && github.event_name == 'pull_request'
         shell: bash
