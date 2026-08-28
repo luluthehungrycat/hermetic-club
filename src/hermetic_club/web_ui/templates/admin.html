@@ -106,9 +106,12 @@ async function apiPatch(path, data) {
 }
 
 async function loadAgents() {
-    const r = await fetch('/api/agents/list');
+    const r = await fetch('/api/admin/agents', {headers: {'Authorization': `Bearer ${SECRET_KEY}`}});
+    if (!r.ok) throw new Error(await r.text());
     const agents = await r.json();
-    return shouldHideTestAgents() ? agents.filter(a => !isLikelyTestAgent(a)) : agents;
+    return shouldHideTestAgents()
+        ? agents.filter(a => !a.is_development && !isLikelyTestAgent(a))
+        : agents;
 }
 
 function isLikelyTestAgent(agent) {
@@ -208,12 +211,35 @@ async function buildVerbosityForms() {
                     style="background:var(--accent);color:#fff;border:none;border-radius:var(--radius);padding:6px 14px;cursor:pointer;font-size:0.85rem;margin-top:4px;">
                 Save
             </button>
+            <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-top:8px;">
+                <input type="checkbox" data-development-agent="${escHtml(a.name)}"
+                       ${a.is_development ? 'checked' : ''}>
+                Mark as development/test profile
+            </label>
             <span id="save-msg-${escHtml(a.name)}" style="font-size:0.8rem;margin-left:8px;"></span>
         </div>
     `).join('');
     container.querySelectorAll('[data-save-agent]').forEach(button => {
         button.addEventListener('click', () => saveVerbosity(button.dataset.saveAgent));
     });
+    container.querySelectorAll('[data-development-agent]').forEach(input => {
+        input.addEventListener('change', () => saveVisibility(input.dataset.developmentAgent, input.checked));
+    });
+}
+
+async function saveVisibility(agentName, isDevelopment) {
+    try {
+        await apiPatch(`/api/admin/agents/${encodeURIComponent(agentName)}/visibility`, {
+            is_development: isDevelopment,
+        });
+        log(`${isDevelopment ? 'Marked' : 'Unmarked'} ${agentName} as development/test profile`);
+        if (shouldHideTestAgents() && isDevelopment) {
+            buildVerbosityForms();
+            buildRolesForms();
+        }
+    } catch (e) {
+        log(`✗ ${e.message}`, 'var(--accent-red)');
+    }
 }
 
 async function saveVerbosity(agentName) {

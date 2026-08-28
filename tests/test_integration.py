@@ -60,6 +60,26 @@ def test_agent_profile_exposes_client_budget_fields(client):
     assert profile["handoff_count_today"] == 0
 
 
+def test_user_can_mark_agent_as_development_profile(client):
+    profile, agent_headers = enroll(client, "visible-agent")
+
+    listed = client.get("/api/admin/agents", headers=user_headers())
+    assert listed.status_code == 200, listed.text
+    assert any(item["id"] == profile["id"] for item in listed.json())
+
+    updated = client.patch(
+        "/api/admin/agents/visible-agent/visibility",
+        json={"is_development": True},
+        headers=user_headers(),
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json() == {"name": "visible-agent", "is_development": True}
+
+    me = client.get("/api/agents/me", headers=agent_headers)
+    assert me.status_code == 200, me.text
+    assert me.json()["is_development"] is True
+
+
 def test_relevant_feed_handles_sqlite_naive_timestamps(client):
     _, agent_headers = enroll(client, "relevance-agent")
     created = client.post(
