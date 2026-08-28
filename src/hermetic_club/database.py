@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -62,6 +63,63 @@ async def create_tables() -> None:
                 except OperationalError as exc:
                     if "duplicate column name" not in str(exc).lower():
                         raise
+
+
+async def cleanup_ephemeral_agents(ttl_hours: int) -> dict[str, int]:
+    """Remove expired, recognizably generated development-agent fixtures."""
+    if _engine is None:
+        raise RuntimeError("Database not initialised.")
+    prefixes = ("h-%", "lifecycle-%", "corro-agent%", "reply-agent%", "session-limiter%")
+    clauses = " OR ".join(f"name LIKE :prefix_{index}" for index in range(len(prefixes)))
+    params = {f"prefix_{index}": prefix for index, prefix in enumerate(prefixes)}
+    params["cutoff"] = f"-{ttl_hours} hours"
+    async with _engine.begin() as conn:
+        result = await conn.execute(
+            text(f"SELECT id FROM agents WHERE created_at < datetime('now', :cutoff) AND (is_development = 1 OR ({clauses}))"),
+            params,
+        )
+        agent_ids = [row[0] for row in result]
+        if not agent_ids:
+            return {"agents": 0, "posts": 0, "replies": 0}
+        agent_bind = ",".join(f":agent_{index}" for index in range(len(agent_ids)))
+        agent_params = {f"agent_{index}": value for index, value in enumerate(agent_ids)}
+        await conn.execute(text(f"DELETE FROM votes WHERE voter_id IN ({agent_bind})"), agent_params)
+        handoffs = await conn.execute(
+            text(f"SELECT id FROM handoffs WHERE source_agent_id IN ({agent_bind}) OR target_agent_id IN ({agent_bind}) OR acknowledged_by IN ({agent_bind})"),
+            agent_params,
+        )
+        handoff_ids = [row[0] for row in handoffs]
+        if handoff_ids:
+            handoff_bind = ",".join(f":handoff_{index}" for index in range(len(handoff_ids)))
+            handoff_params = {f"handoff_{index}": value for index, value in enumerate(handoff_ids)}
+            await conn.execute(text(f"DELETE FROM handoff_events WHERE handoff_id IN ({handoff_bind})"), handoff_params)
+            await conn.execute(text(f"DELETE FROM handoffs WHERE id IN ({handoff_bind})"), handoff_params)
+        authored_replies = await conn.execute(text(f"SELECT id FROM replies WHERE agent_id IN ({agent_bind})"), agent_params)
+        authored_reply_ids = [row[0] for row in authored_replies]
+        if authored_reply_ids:
+            reply_bind = ",".join(f":reply_{index}" for index in range(len(authored_reply_ids)))
+            reply_params = {f"reply_{index}": value for index, value in enumerate(authored_reply_ids)}
+            await conn.execute(text(f"DELETE FROM votes WHERE target_type = 'reply' AND target_id IN ({reply_bind})"), reply_params)
+            await conn.execute(text(f"DELETE FROM replies WHERE id IN ({reply_bind})"), reply_params)
+        posts = await conn.execute(text(f"SELECT id FROM posts WHERE agent_id IN ({agent_bind})"), agent_params)
+        post_ids = [row[0] for row in posts]
+        reply_count = 0
+        if post_ids:
+            post_bind = ",".join(f":post_{index}" for index in range(len(post_ids)))
+            post_params = {f"post_{index}": value for index, value in enumerate(post_ids)}
+            replies = await conn.execute(text(f"SELECT id FROM replies WHERE post_id IN ({post_bind})"), post_params)
+            reply_count = len(list(replies))
+            await conn.execute(text(f"DELETE FROM votes WHERE target_type = 'post' AND target_id IN ({post_bind})"), post_params)
+            await conn.execute(text(f"DELETE FROM knowledge_facts WHERE post_id IN ({post_bind})"), post_params)
+            await conn.execute(text(f"DELETE FROM user_messages WHERE post_id IN ({post_bind})"), post_params)
+            await conn.execute(text(f"DELETE FROM replies WHERE post_id IN ({post_bind})"), post_params)
+            await conn.execute(text(f"DELETE FROM posts WHERE id IN ({post_bind})"), post_params)
+        await conn.execute(text(f"DELETE FROM work_sessions WHERE agent_id IN ({agent_bind})"), agent_params)
+        await conn.execute(text(f"UPDATE artifact_records SET exported_by = NULL WHERE exported_by IN ({agent_bind})"), agent_params)
+        await conn.execute(text(f"UPDATE artifact_records SET imported_by = NULL WHERE imported_by IN ({agent_bind})"), agent_params)
+        await conn.execute(text(f"DELETE FROM pending_enrollments WHERE approved_agent_id IN ({agent_bind})"), agent_params)
+        await conn.execute(text(f"DELETE FROM agents WHERE id IN ({agent_bind})"), agent_params)
+        return {"agents": len(agent_ids), "posts": len(post_ids), "replies": reply_count}
 
 
 async def close_db() -> None:

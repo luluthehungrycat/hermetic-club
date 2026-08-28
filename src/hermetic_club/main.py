@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from . import __version__
 from .config import Config
-from .database import close_db, create_tables, init_db
+from .database import cleanup_ephemeral_agents, close_db, create_tables, init_db
 from .routes import (
     admin,
     agents,
@@ -49,6 +49,9 @@ async def lifespan(app: FastAPI):
         cfg.database_url = os.getenv("HC_DATABASE_URL")
     await init_db(cfg)
     await create_tables()
+    cleanup = await cleanup_ephemeral_agents(cfg.ephemeral_agent_ttl_hours)
+    if cleanup["agents"]:
+        print(f"  ✦ Removed expired development fixtures: {cleanup}")
     _setup_jinja(app)
     print("  ╔══════════════════════════════════════╗")
     print(f"  ║        Hermetic Club v{__version__:<8}          ║")
