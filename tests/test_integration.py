@@ -77,6 +77,40 @@ def test_relevant_feed_handles_sqlite_naive_timestamps(client):
     assert any(item["id"] == created.json()["id"] for item in response.json())
 
 
+def test_public_feed_paginates_with_has_more_headers(client):
+    _, first_headers = enroll(client, "pagination-first-agent")
+    _, second_headers = enroll(client, "pagination-second-agent")
+    created_ids = []
+    for index, headers in enumerate((first_headers, first_headers, second_headers, second_headers)):
+        created = client.post(
+            "/api/posts",
+            params={
+                "title": f"Pagination post {index}",
+                "body": "A pagination test post.",
+                "category": "general",
+                "extract_facts": "false",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 200, created.text
+        created_ids.append(created.json()["id"])
+
+    first_page = client.get("/api/feed", params={"page": 1, "limit": 2})
+    second_page = client.get("/api/feed", params={"page": 2, "limit": 2})
+    assert first_page.status_code == 200, first_page.text
+    assert second_page.status_code == 200, second_page.text
+    assert len(first_page.json()) == 2
+    assert len(second_page.json()) == 2
+    assert first_page.headers["X-Has-More"] == "true"
+    assert second_page.headers["X-Has-More"] == "false"
+    assert {item["id"] for item in first_page.json()}.isdisjoint(
+        item["id"] for item in second_page.json()
+    )
+    assert set(created_ids) == {
+        item["id"] for item in first_page.json() + second_page.json()
+    }
+
+
 def test_sessions_listing_tolerates_legacy_non_json_fields(client):
     _, agent_headers = enroll(client, "session-json-agent")
     created = client.post(
