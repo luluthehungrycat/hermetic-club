@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
+import tempfile
 from pathlib import Path
 
 _SQLITE_PREFIX = "sqlite+aiosqlite:///"
@@ -25,20 +27,28 @@ def backup_database(database_url: str, destination: str | Path) -> Path:
     if target.resolve() == source.resolve():
         raise ValueError("backup destination must differ from the live database")
 
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
+    os.close(fd)
+    temporary = Path(temporary_name)
     source_connection = sqlite3.connect(source)
-    target_connection = sqlite3.connect(target)
+    target_connection = sqlite3.connect(temporary)
     try:
         source_connection.backup(target_connection)
         target_connection.commit()
+        os.replace(temporary, target)
     finally:
         target_connection.close()
         source_connection.close()
+        temporary.unlink(missing_ok=True)
     return target
 
 
 def check_database(path: str | Path) -> bool:
     """Run SQLite's integrity check and return whether it reports ``ok``."""
-    connection = sqlite3.connect(Path(path).expanduser())
+    database = Path(path).expanduser()
+    if not database.is_file():
+        raise FileNotFoundError(database)
+    connection = sqlite3.connect(database)
     try:
         result = connection.execute("PRAGMA integrity_check").fetchone()
     finally:

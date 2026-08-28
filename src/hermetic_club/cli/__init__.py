@@ -49,10 +49,15 @@ def cmd_backup(args: argparse.Namespace) -> None:
 
 
 def cmd_db_check(args: argparse.Namespace) -> None:
-    from ..backup import check_database
+    from ..backup import check_database, sqlite_path
+    from ..config import Config
 
-    path = args.database or str(Path.home() / ".hermetic-club" / "club.db")
-    if not check_database(path):
+    path = args.database or str(sqlite_path(Config.load().database_url))
+    try:
+        valid = check_database(path)
+    except FileNotFoundError:
+        raise SystemExit(f"  ✗ Database does not exist: {path}")
+    if not valid:
         raise SystemExit(f"  ✗ Database integrity check failed: {path}")
     print(f"  ✦ Database integrity check passed: {path}")
 

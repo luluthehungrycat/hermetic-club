@@ -32,3 +32,12 @@ def test_backup_rejects_live_database_as_destination(tmp_path):
 
     with pytest.raises(ValueError):
         backup_database(f"sqlite+aiosqlite:///{source}", source)
+
+
+def test_check_database_rejects_missing_file_without_creating_it(tmp_path):
+    missing = tmp_path / "missing.db"
+
+    with pytest.raises(FileNotFoundError):
+        check_database(missing)
+
+    assert not missing.exists()
