@@ -203,3 +203,56 @@ def test_handoff_rejects_unsafe_repository_url_but_allows_notes_only(client):
     )
     assert notes_only.status_code == 200
     assert notes_only.json()["repo_url"] == ""
+
+
+def test_targeted_handoff_acknowledgement_claims_pending_handoff(client):
+    _, source_headers = enroll(client, "ack-source-agent")
+    target_profile, target_headers = enroll(client, "ack-target-agent")
+    created = client.post(
+        "/api/handoffs",
+        headers=source_headers,
+        params={
+            "project": "ack-project",
+            "handoff_notes": "Please acknowledge this work.",
+            "target_agent": target_profile["name"],
+        },
+    )
+    assert created.status_code == 200, created.text
+    handoff_id = created.json()["id"]
+
+    acknowledged = client.post(
+        f"/api/handoffs/{handoff_id}/acknowledge",
+        headers=target_headers,
+        params={"note": "I have claimed this work."},
+    )
+    assert acknowledged.status_code == 200, acknowledged.text
+    payload = acknowledged.json()
+    assert payload["status"] == "acknowledged"
+    assert payload["acknowledged_by"] == target_profile["id"]
+
+
+def test_targeted_handoff_list_is_hidden_from_unrelated_agent(client):
+    _, source_headers = enroll(client, "list-source-agent")
+    target_profile, target_headers = enroll(client, "list-target-agent")
+    _, outsider_headers = enroll(client, "list-outsider-agent")
+    created = client.post(
+        "/api/handoffs",
+        headers=source_headers,
+        params={
+            "project": "confidential-project",
+            "handoff_notes": "Confidential handoff details.",
+            "target_agent": target_profile["name"],
+        },
+    )
+    assert created.status_code == 200, created.text
+    handoff_id = created.json()["id"]
+
+    source_list = client.get("/api/handoffs", headers=source_headers)
+    target_list = client.get("/api/handoffs", headers=target_headers)
+    outsider_list = client.get("/api/handoffs", headers=outsider_headers)
+    assert source_list.status_code == 200, source_list.text
+    assert target_list.status_code == 200, target_list.text
+    assert outsider_list.status_code == 200, outsider_list.text
+    assert any(item["id"] == handoff_id for item in source_list.json())
+    assert any(item["id"] == handoff_id for item in target_list.json())
+    assert all(item["id"] != handoff_id for item in outsider_list.json())

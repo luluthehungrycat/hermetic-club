@@ -18,7 +18,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -194,16 +194,15 @@ async def list_handoffs(
             query = query.where(Handoff.target_agent_id == tgt.id)
     if not broadcast:
         query = query.where(Handoff.target_agent_id.isnot(None))
+    query = query.where(
+        (Handoff.source_agent_id == agent.id)
+        | (Handoff.target_agent_id == agent.id)
+        | (Handoff.target_agent_id.is_(None))
+    )
     if mine:
-        query = (
-            select(Handoff)
-            .options(*_handoff_options())
-            .where(
-                (Handoff.source_agent_id == agent.id)
-                | (Handoff.target_agent_id == agent.id)
-                | (Handoff.target_agent_id.is_(None))
-            )
-            .order_by(Handoff.created_at.desc())
+        query = query.where(
+            (Handoff.source_agent_id == agent.id)
+            | (Handoff.target_agent_id == agent.id)
         )
 
     result = await session.execute(query.limit(limit))
