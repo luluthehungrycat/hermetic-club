@@ -135,6 +135,23 @@ async def cleanup_ephemeral_agents(ttl_hours: int) -> dict[str, int]:
             await conn.execute(text(f"DELETE FROM posts WHERE id IN ({post_bind})"), post_params)
         else:
             await conn.execute(text(f"DELETE FROM knowledge_facts WHERE agent_id IN ({agent_bind})"), agent_params)
+        facts = await conn.execute(text("SELECT id, corroborated_by, corroboration_count FROM knowledge_facts"))
+        for fact_id, raw_corrobators, count in facts:
+            try:
+                corrobators = json.loads(raw_corrobators or "[]")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            cleaned_corrobators = [agent_id for agent_id in corrobators if agent_id not in agent_ids]
+            removed_count = len(corrobators) - len(cleaned_corrobators)
+            if removed_count:
+                await conn.execute(
+                    text("UPDATE knowledge_facts SET corroborated_by = :corroborated_by, corroboration_count = :corroboration_count WHERE id = :fact_id"),
+                    {
+                        "corroborated_by": json.dumps(cleaned_corrobators),
+                        "corroboration_count": max(1, (count or 1) - removed_count),
+                        "fact_id": fact_id,
+                    },
+                )
         artifacts = await conn.execute(text("SELECT id, allowed_agent_ids FROM artifact_records"))
         for artifact_id, raw_allowlist in artifacts:
             try:

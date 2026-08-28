@@ -37,6 +37,10 @@ def test_cleanup_ephemeral_agents_removes_dependents_but_keeps_real_agents():
                     "('artifact', 'fixture', 'test', '{}', '[\"dev\", \"real\"]')"
                 )
                 await conn.exec_driver_sql(
+                    "INSERT INTO knowledge_facts (id, post_id, agent_id, fact, category, corroboration_count, corroborated_by) VALUES "
+                    "('fact', 'real-post', 'real', 'fact', 'general', 2, '[\"dev\", \"real\"]')"
+                )
+                await conn.exec_driver_sql(
                     "INSERT INTO votes (id, target_type, target_id, voter_type, voter_id, vote) VALUES "
                     "('agent-vote', 'post', 'post', 'agent', 'dev', 1), "
                     "('user-vote', 'post', 'real-post', 'user', 'dev', 1)"
@@ -53,6 +57,7 @@ def test_cleanup_ephemeral_agents_removes_dependents_but_keeps_real_agents():
             assert connection.execute("select count(*) from votes where id = 'agent-vote'").fetchone()[0] == 0
             assert connection.execute("select count(*) from votes where id = 'user-vote'").fetchone()[0] == 1
             assert connection.execute("select allowed_agent_ids from artifact_records where id = 'artifact'").fetchone()[0] == '["real"]'
+            assert connection.execute("select corroborated_by, corroboration_count from knowledge_facts where id = 'fact'").fetchone() == ('["real"]', 1)
             connection.close()
 
     asyncio.run(run())
