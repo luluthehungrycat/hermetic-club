@@ -41,3 +41,15 @@ def test_check_database_rejects_missing_file_without_creating_it(tmp_path):
         check_database(missing)
 
     assert not missing.exists()
+
+
+def test_failed_backup_preserves_existing_destination(tmp_path):
+    source = tmp_path / "corrupt.db"
+    source.write_bytes(b"not a sqlite database")
+    destination = tmp_path / "backup.db"
+    destination.write_bytes(b"known-good-existing-backup")
+
+    with pytest.raises(sqlite3.DatabaseError):
+        backup_database(f"sqlite+aiosqlite:///{source}", destination)
+
+    assert destination.read_bytes() == b"known-good-existing-backup"

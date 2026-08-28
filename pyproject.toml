@@ -46,3 +46,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 hermetic_club = ["web_ui/templates/*.html", "web_ui/static/**/*"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI dependency injection intentionally uses Depends() in signatures.
+"src/hermetic_club/routes/*.py" = ["B008"]
