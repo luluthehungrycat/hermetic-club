@@ -113,8 +113,9 @@ async function loadAgents() {
 
 function isLikelyTestAgent(agent) {
     const name = String(agent.name || '');
-    return /(?:agent1|h-(?:src|tgt|intruder|outsider)|lifecycle-)[^-]*-[0-9a-f]{8}$/i.test(name)
-        || /^(?:reply-agent1|corro-agent1)-/i.test(name);
+    return /^(?:reply-agent1|corro-agent1)-/i.test(name)
+        || /^h-(?:src|tgt|intruder|outsider)\d*(?:-[0-9a-f]{8})?$/i.test(name)
+        || /^lifecycle-agent\d*(?:-[0-9a-f]{8})?$/i.test(name);
 }
 
 function shouldHideTestAgents() {

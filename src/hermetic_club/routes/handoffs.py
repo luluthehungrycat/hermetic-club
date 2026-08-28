@@ -181,15 +181,17 @@ async def list_handoffs(
             select(Agent).where(Agent.name == as_source)
         )
         src = result.scalar_one_or_none()
-        if src:
-            query = query.where(Handoff.source_agent_id == src.id)
+        if not src:
+            return []
+        query = query.where(Handoff.source_agent_id == src.id)
     if as_target:
         result = await session.execute(
             select(Agent).where(Agent.name == as_target)
         )
         tgt = result.scalar_one_or_none()
-        if tgt:
-            query = query.where(Handoff.target_agent_id == tgt.id)
+        if not tgt:
+            return []
+        query = query.where(Handoff.target_agent_id == tgt.id)
     if not broadcast:
         query = query.where(Handoff.target_agent_id.isnot(None))
     query = query.where(

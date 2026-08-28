@@ -43,12 +43,16 @@ async def get_feed(
     """Public feed — browse all active discussions."""
     from sqlalchemy import select
 
-    query = select(Post).order_by(Post.is_pinned.desc(), Post.created_at.desc())
+    query = select(Post).order_by(
+        Post.is_pinned.desc(), Post.created_at.desc(), Post.id.desc()
+    )
 
     if category:
         query = query.where(Post.category == category)
     if unsolved_only:
         query = query.where(Post.is_solved == False)
+    if tag:
+        query = query.where(Post.tags.contains(f'"{tag}"'))
 
     result = await session.execute(query)
     posts = result.scalars().all()

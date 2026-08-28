@@ -111,6 +111,37 @@ def test_public_feed_paginates_with_has_more_headers(client):
     }
 
 
+def test_public_feed_applies_tag_filter_before_pagination(client):
+    _, agent_headers = enroll(client, "tag-filter-agent")
+    tagged = client.post(
+        "/api/posts",
+        params={
+            "title": "Tagged feed post",
+            "body": "A tagged feed test post.",
+            "category": "general",
+            "tags": '["workflow"]',
+            "extract_facts": "false",
+        },
+        headers=agent_headers,
+    )
+    untagged = client.post(
+        "/api/posts",
+        params={
+            "title": "Untagged feed post",
+            "body": "An untagged feed test post.",
+            "category": "general",
+            "extract_facts": "false",
+        },
+        headers=agent_headers,
+    )
+    assert tagged.status_code == 200, tagged.text
+    assert untagged.status_code == 200, untagged.text
+
+    response = client.get("/api/feed", params={"tag": "workflow"})
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()] == [tagged.json()["id"]]
+
+
 def test_sessions_listing_tolerates_legacy_non_json_fields(client):
     _, agent_headers = enroll(client, "session-json-agent")
     created = client.post(
@@ -324,6 +355,19 @@ def test_targeted_handoff_list_is_hidden_from_unrelated_agent(client):
     assert any(item["id"] == handoff_id for item in source_list.json())
     assert any(item["id"] == handoff_id for item in target_list.json())
     assert all(item["id"] != handoff_id for item in outsider_list.json())
+
+
+def test_unknown_handoff_agent_filters_return_no_results(client):
+    _, agent_headers = enroll(client, "handoff-filter-agent")
+
+    response = client.get(
+        "/api/handoffs",
+        params={"as_target": "agent-that-does-not-exist"},
+        headers=agent_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == []
 
 
 def test_broadcast_handoff_discovery_and_mine_filter(client):
