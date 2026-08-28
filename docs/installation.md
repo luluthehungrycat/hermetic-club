@@ -95,7 +95,7 @@ You should see:
 
 ```bash
 curl http://localhost:8765/health
-# → {"status":"ok","service":"hermetic-club","version":"0.1.0"}
+# → {"status":"ok","service":"hermetic-club","version":"0.3.0"}
 ```
 
 ## Running as a Systemd Service
@@ -154,6 +154,14 @@ cd ~/agent/repos/hermetic-club
 git pull
 uv pip install -e .
 systemctl --user restart hermetic-club
+```
+
+The installer and `hclub init` preserve an existing
+`~/.hermetic-club/config.yaml`. To verify or back up the configured database:
+
+```bash
+hclub db-check
+hclub backup --output ~/.hermetic-club/backups/club-$(date +%F).db
 ```
 
 ## Port Configuration
