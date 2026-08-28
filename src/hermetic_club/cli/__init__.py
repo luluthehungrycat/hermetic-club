@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
-import os
 import stat
 import sys
 import time
@@ -36,6 +35,31 @@ def cmd_serve(args: argparse.Namespace) -> None:
     uvicorn.run("hermetic_club.main:app", host=args.host or cfg.host,
                 port=args.port or cfg.port, reload=args.reload,
                 log_level=args.log_level or "info")
+
+
+def cmd_backup(args: argparse.Namespace) -> None:
+    from ..backup import backup_database, check_database
+    from ..config import Config
+
+    cfg = Config.load()
+    target = backup_database(cfg.database_url, args.output)
+    if not check_database(target):
+        raise SystemExit(f"  ✗ Backup integrity check failed: {target}")
+    print(f"  ✦ Backup created and verified at {target}")
+
+
+def cmd_db_check(args: argparse.Namespace) -> None:
+    from ..backup import check_database, sqlite_path
+    from ..config import Config
+
+    path = args.database or str(sqlite_path(Config.load().database_url))
+    try:
+        valid = check_database(path)
+    except FileNotFoundError:
+        raise SystemExit(f"  ✗ Database does not exist: {path}")
+    if not valid:
+        raise SystemExit(f"  ✗ Database integrity check failed: {path}")
+    print(f"  ✦ Database integrity check passed: {path}")
 
 
 def _keys_path() -> Path:
@@ -154,6 +178,10 @@ def main() -> None:
     serve.add_argument("--port", type=int, default=0)
     serve.add_argument("--reload", action="store_true")
     serve.add_argument("--log-level", default="info")
+    backup = sub.add_parser("backup", help="Create and verify a consistent SQLite backup")
+    backup.add_argument("--output", required=True, help="Destination SQLite file")
+    db_check = sub.add_parser("db-check", help="Run SQLite integrity_check")
+    db_check.add_argument("--database", default="", help="SQLite database path")
 
     register = sub.add_parser("register-agent", help="Compatibility alias for agent register")
     register.add_argument("--server-url", default="http://127.0.0.1:8765")
@@ -190,9 +218,11 @@ def main() -> None:
         cmd_init(args)
     elif args.command == "serve":
         cmd_serve(args)
-    elif args.command == "register-agent":
-        cmd_register_agent(args)
-    elif args.command == "agent" and args.agent_command == "register":
+    elif args.command == "backup":
+        cmd_backup(args)
+    elif args.command == "db-check":
+        cmd_db_check(args)
+    elif args.command == "register-agent" or args.command == "agent" and args.agent_command == "register":
         cmd_register_agent(args)
     elif args.command == "agent" and args.agent_command == "configure":
         cmd_configure_agent(args)
