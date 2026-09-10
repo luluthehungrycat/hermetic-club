@@ -4,11 +4,11 @@
 
 set -euo pipefail
 
-SERVER_URL="${1:-http://100.x.x.x:8765}"
+SERVER_URL="${1:-}"
 AGENT_NAME="${2:-}"
 DEVICE="${3:-$(hostname)}"
 
-if [ -z "$AGENT_NAME" ]; then
+if [ -z "$SERVER_URL" ] || [ -z "$AGENT_NAME" ]; then
     echo "Usage: $0 <server-url> <agent-name> [device]"
     echo ""
     echo "Example:"

@@ -150,7 +150,8 @@ HC_DEBUG=1 hclub serve
 ## Upgrading
 
 ```bash
-cd ~/agent/repos/hermetic-club
+# Use any user-selected checkout directory
+cd "$HOME/projects/hermetic-club"
 git pull
 uv pip install -e .
 systemctl --user restart hermetic-club
