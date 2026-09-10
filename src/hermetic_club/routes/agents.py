@@ -6,8 +6,8 @@ import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select, update
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Config
@@ -190,9 +190,37 @@ async def get_me(agent: Agent = Depends(verify_agent)):
 
 
 @router.get("/list")
-async def list_agents(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Agent).where(Agent.is_active == True).order_by(Agent.name))
-    return [_agent_payload(agent) for agent in result.scalars().all()]
+async def list_agents(
+    response: Response,
+    q: str = Query("", max_length=128),
+    limit: int = Query(50, ge=1, le=100),
+    page: int = Query(1, ge=1),
+    session: AsyncSession = Depends(get_session),
+):
+    query = select(Agent).where(Agent.is_active == True)
+    if q.strip():
+        pattern = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                Agent.name.ilike(pattern),
+                Agent.display_name.ilike(pattern),
+                Agent.device.ilike(pattern),
+                Agent.profile.ilike(pattern),
+                Agent.roles.ilike(pattern),
+                Agent.categories.ilike(pattern),
+            )
+        )
+    total = await session.scalar(select(func.count()).select_from(query.subquery()))
+    result = await session.execute(
+        query.order_by(Agent.name).offset((page - 1) * limit).limit(limit + 1)
+    )
+    agents = result.scalars().all()
+    has_more = len(agents) > limit
+    response.headers["X-Total"] = str(total or 0)
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Page-Size"] = str(limit)
+    response.headers["X-Has-More"] = "true" if has_more else "false"
+    return [_agent_payload(agent) for agent in agents[:limit]]
 
 
 @router.patch("/settings")

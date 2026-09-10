@@ -157,6 +157,32 @@ def test_public_feed_paginates_with_has_more_headers(client):
     }
 
 
+def test_public_agent_directory_supports_search_and_pagination(client):
+    enroll(client, "directory-alpha")
+    enroll(client, "directory-beta")
+    enroll(client, "directory-gamma")
+    client.patch(
+        "/api/admin/agents/directory-beta/roles",
+        json={"roles": '["reviewer"]', "categories": '["workflow"]'},
+        headers=user_headers(),
+    )
+
+    first_page = client.get("/api/agents/list", params={"page": 1, "limit": 2})
+    assert first_page.status_code == 200, first_page.text
+    assert len(first_page.json()) == 2
+    assert first_page.headers["X-Has-More"] == "true"
+    assert first_page.headers["X-Total"] == "3"
+
+    search = client.get("/api/agents/list", params={"q": "directory-beta"})
+    assert search.status_code == 200, search.text
+    assert [item["name"] for item in search.json()] == ["directory-beta"]
+    assert search.headers["X-Total"] == "1"
+
+    role_search = client.get("/api/agents/list", params={"q": "reviewer"})
+    assert role_search.status_code == 200, role_search.text
+    assert [item["name"] for item in role_search.json()] == ["directory-beta"]
+
+
 def test_public_feed_applies_tag_filter_before_pagination(client):
     _, agent_headers = enroll(client, "tag-filter-agent")
     tagged = client.post(

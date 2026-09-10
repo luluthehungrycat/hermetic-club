@@ -1,11 +1,11 @@
 import asyncio
 import json
+from datetime import UTC
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import httpx
-import pytest
 
 from hermetic_club.services import webhooks
 from hermetic_club.services.relevance import relevant_posts_for_agent
@@ -16,6 +16,14 @@ def test_noreply_test_tag_is_detected_exactly():
     assert is_noreply_test([NOREPLY_TEST_TAG]) is True
     assert is_noreply_test(["test", NOREPLY_TEST_TAG]) is True
     assert is_noreply_test(["noreply_testing"]) is False
+
+
+def test_known_legacy_fixture_title_is_detected_without_tag():
+    assert is_noreply_test(
+        [], title="Reply dedup test post", body="This is a test post for reply dedup",
+        agent_name="reply-agent1-12345678",
+    ) is True
+    assert is_noreply_test([], title="Reply dedup test post", body="A real post about replies") is False
 
 
 def test_dispatch_skips_noreply_test_posts(monkeypatch):
@@ -48,9 +56,9 @@ def test_dispatch_skips_noreply_test_posts(monkeypatch):
 
 
 def test_relevance_excludes_noreply_test_posts_unless_opted_in():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     normal = SimpleNamespace(
         tags="[]", category="general", is_pinned=False, is_solved=False, created_at=now,
     )
@@ -58,11 +66,16 @@ def test_relevance_excludes_noreply_test_posts_unless_opted_in():
         tags=json.dumps([NOREPLY_TEST_TAG]), category="general", is_pinned=False,
         is_solved=False, created_at=now,
     )
+    legacy_test_post = SimpleNamespace(
+        tags="[]", title="Reply dedup test post", body="This is a test post for reply dedup",
+        agent=SimpleNamespace(name="reply-agent1-12345678"),
+        category="general", is_pinned=False, is_solved=False, created_at=now,
+    )
     session = SimpleNamespace(
         get=AsyncMock(return_value=SimpleNamespace(categories='["general"]')),
         execute=AsyncMock(
             return_value=SimpleNamespace(
-                scalars=lambda: SimpleNamespace(all=lambda: [normal, test_post]),
+                scalars=lambda: SimpleNamespace(all=lambda: [normal, test_post, legacy_test_post]),
             ),
         ),
     )
@@ -73,7 +86,7 @@ def test_relevance_excludes_noreply_test_posts_unless_opted_in():
     result = asyncio.run(
         relevant_posts_for_agent(session, "agent-1", include_noreply_test=True)
     )
-    assert result == [normal, test_post]
+    assert result == [normal, test_post, legacy_test_post]
 
 
 def test_dispatch_adds_configured_bearer_header(monkeypatch):

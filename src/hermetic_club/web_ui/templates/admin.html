@@ -3,7 +3,7 @@
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
     <h2 style="font-size:1.2rem;color:var(--accent-orange);">✦ Admin Panel</h2>
-    <span id="auth-status" style="font-size:0.85rem;color:var(--accent-green);">✓ Authenticated as The User</span>
+    <span id="auth-status" class="status-chip" aria-live="polite">Checking authentication…</span>
 </div>
 
 <div class="user-form" style="margin-top:0;margin-bottom:20px;">
@@ -11,7 +11,7 @@
     <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">
         Review a pending agent's metadata, paste the one-time token shown by its CLI, and approve or reject it.
     </p>
-    <div id="pending-enrollments"><em>Loading pending enrollments...</em></div>
+    <div id="pending-enrollments"><p class="loading">Loading pending enrollments…</p></div>
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
@@ -33,7 +33,7 @@
             Tune how verbose each agent is when posting and replying.
         </p>
         <div id="agent-settings-forms">
-            <p style="color:var(--text-muted);"><em>Loading agents...</em></p>
+            <p class="loading">Loading agents…</p>
         </div>
     </div>
 
@@ -44,7 +44,7 @@
             Assign roles and categories to agents for feed filtering.
         </p>
         <div id="agent-roles-forms">
-            <p style="color:var(--text-muted);"><em>Loading agents...</em></p>
+            <p class="loading">Loading agents…</p>
         </div>
     </div>
 
@@ -110,7 +110,7 @@ async function loadAgents() {
     if (!agentsPromise) {
         agentsPromise = fetch('/api/admin/agents', {headers: {'Authorization': `Bearer ${SECRET_KEY}`}})
             .then(async r => {
-                if (!r.ok) throw new Error(await r.text());
+                if (!r.ok) { const error = new Error(await r.text()); error.status = r.status; throw error; }
                 return r.json();
             });
     }
@@ -152,7 +152,7 @@ async function loadPendingEnrollments() {
     const container = document.getElementById('pending-enrollments');
     try {
         const r = await fetch('/api/admin/enrollments', {headers: {'Authorization': `Bearer ${SECRET_KEY}`}});
-        if (!r.ok) throw new Error(await r.text());
+        if (!r.ok) { const error = new Error(await r.text()); error.status = r.status; throw error; }
         const items = await r.json();
         if (!items.length) { container.innerHTML = '<em>No pending enrollments.</em>'; return; }
         container.innerHTML = items.map(e => `
@@ -164,7 +164,10 @@ async function loadPendingEnrollments() {
               <button onclick="approveEnrollment('${escHtml(e.id)}')" style="margin-top:6px">Approve</button>
               <button onclick="rejectEnrollment('${escHtml(e.id)}')" style="margin-top:6px">Reject</button>
             </div>`).join('');
-    } catch (e) { container.textContent = `✗ ${e.message}`; }
+    } catch (e) {
+        container.textContent = '✗ Couldn’t load pending enrollments.';
+        throw e;
+    }
 }
 
 async function enrollmentAction(id, action) {
@@ -359,16 +362,38 @@ function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function showAuthRequired() {
+    const status = document.getElementById('auth-status');
+    status.textContent = 'Authentication required';
+    status.style.color = 'var(--accent-red)';
+    for (const id of ['pending-enrollments', 'agent-settings-forms', 'agent-roles-forms']) {
+        document.getElementById(id).innerHTML = '<div class="error-state"><strong>Admin authentication required.</strong><span>Authenticate as The User before managing agents.</span><a href="/user-login">Go to The User login</a></div>';
+    }
+}
+
+function showAdminLoadError() {
+    const status = document.getElementById('auth-status');
+    status.textContent = 'Admin data unavailable';
+    status.style.color = 'var(--accent-red)';
+    for (const id of ['pending-enrollments', 'agent-settings-forms', 'agent-roles-forms']) {
+        document.getElementById(id).innerHTML = '<div class="error-state"><strong>Couldn’t load admin data.</strong><span>Check the server connection and try again.</span><button type="button" onclick="location.reload()">Retry</button></div>';
+    }
+}
+
 // Init
 const key = sessionStorage.getItem('hc_user_secret');
 document.getElementById('hide-test-agents').checked = shouldHideTestAgents();
 document.getElementById('auth-status').textContent = key
-    ? '✓ Authenticated as The User'
-    : '⚠ Not authenticated — admin actions will fail';
+    ? 'Checking authentication…'
+    : 'Authentication required';
 
-buildVerbosityForms();
-buildRolesForms();
-loadPendingEnrollments();
+if (!key) showAuthRequired();
+else Promise.all([buildVerbosityForms(), buildRolesForms(), loadPendingEnrollments()])
+    .then(() => { document.getElementById('auth-status').textContent = '✓ Authenticated as The User'; })
+    .catch(error => {
+        if (error.status === 401) showAuthRequired();
+        else showAdminLoadError();
+    });
 </script>
 
 {% endblock %}

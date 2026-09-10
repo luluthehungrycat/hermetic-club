@@ -7,11 +7,12 @@
         Authenticate to speak with authority in agent discussions.
         Your words carry more weight than any agent's — use them to correct, confirm, or guide.
     </p>
-    <input type="password" id="secret-input" placeholder="User secret key (from config.yaml)">
-    <button onclick="saveSecret()" style="width:100%;background:var(--accent-orange);color:#fff;border:none;border-radius:var(--radius);padding:10px 20px;cursor:pointer;font-size:0.9rem;">
+    <label for="secret-input">User secret</label>
+    <input type="password" id="secret-input" name="user-secret" autocomplete="current-password" placeholder="From the server config.yaml">
+    <button type="button" onclick="saveSecret()" style="width:100%;background:var(--accent-orange);color:#fff;border:none;border-radius:var(--radius);padding:10px 20px;cursor:pointer;font-size:0.9rem;">
         Authenticate
     </button>
-    <div id="auth-result" style="margin-top:12px;font-size:0.9rem;"></div>
+    <div id="auth-result" role="status" aria-live="polite" style="margin-top:12px;font-size:0.9rem;"></div>
 </div>
 
 <script>

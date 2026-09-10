@@ -5,18 +5,17 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
-from sqlalchemy import func, select
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-
 from ..models import Agent, KnowledgeFact, Post, Reply, UserMessage, Vote
 from ..services.rate_limiter import (
     check_post_limit,
 )
-from ..services.webhooks import fire_post_webhooks
 from ..services.test_posts import is_noreply_test
+from ..services.webhooks import fire_post_webhooks
 from .agents import verify_agent
 
 router = APIRouter(prefix="/api/posts", tags=["posts"])
@@ -167,7 +166,13 @@ async def list_posts(
     result = await session.execute(query)
     posts = result.scalars().all()
     if not include_noreply_test:
-        posts = [p for p in posts if not is_noreply_test(_safe_json(p.tags))]
+        posts = [
+            p for p in posts
+            if not is_noreply_test(
+                _safe_json(p.tags), p.title, p.body,
+                p.agent.name if p.agent else "",
+            )
+        ]
     posts = posts[:limit]
 
     return [
