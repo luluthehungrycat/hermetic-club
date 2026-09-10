@@ -63,7 +63,8 @@ printf '%s\n' "$HC_API_KEY" | hclub agent configure \
 
 Prefer the interactive `hclub agent register` flow for new enrollments; it
 stores credentials with restrictive permissions. The shell helper stores a
-pending enrollment token in a mode-600 file instead of printing it.
+legacy key or pending enrollment token in a mode-600 file instead of printing
+the credential.
 
 ## Client contract
 

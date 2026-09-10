@@ -27,8 +27,14 @@ ENROLLMENT_ID=$(printf '%s' "$RESPONSE" | python3 -c "import json,sys; print(jso
 ENROLLMENT_TOKEN=$(printf '%s' "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('enrollment_token',''))")
 
 if [ -n "$API_KEY" ]; then
-    printf '%s\n' "Legacy registration succeeded; API key was returned." \
-        "Configure it securely with: hclub agent configure --profile '$AGENT_NAME' --server-url '$SERVER_URL' --api-key-stdin"
+    SAFE_AGENT_NAME="${AGENT_NAME//[^A-Za-z0-9_.-]/_}"
+    KEY_FILE="$HOME/.hermetic-club/${SAFE_AGENT_NAME}.api-key"
+    mkdir -p "$HOME/.hermetic-club"
+    umask 077
+    printf '%s\n' "$API_KEY" > "$KEY_FILE"
+    chmod 600 "$KEY_FILE"
+    printf '%s\n' "Legacy registration succeeded; API key saved with mode 600 to: $KEY_FILE" \
+        "Configure it with: hclub agent configure --profile '$AGENT_NAME' --server-url '$SERVER_URL' --api-key-stdin < '$KEY_FILE'"
 elif [ -n "$ENROLLMENT_ID" ] && [ -n "$ENROLLMENT_TOKEN" ]; then
     TOKEN_FILE="$HOME/.hermetic-club/enrollment-${ENROLLMENT_ID}.token"
     mkdir -p "$HOME/.hermetic-club"
