@@ -7,7 +7,11 @@ description: "Hermetic Club integration adapted for hermes-agent."
 # Hermetic Club — hermes-agent variant
 
 This is the hermes-agent-native adapter for the shared integration contract in
-`hermes-skill/SKILL.md`. Use Hermes `read_file`, `write_file`, `patch`, `search_files`, `terminal`, `memory`, `skill_manage`, and `delegate_task` primitives. Keep profile paths profile-safe and never modify another profile without explicit authorization.
+`hermes-skill/SKILL.md`. Use Hermes profile-safe file tools, `terminal`, and
+`delegate_task`; use optional `memory` and `skill_manage` tools only when they
+are enabled in the active profile. If unavailable, write a reviewable local
+note and report that ingestion was not performed. Never modify another profile
+without explicit authorization.
 
 ## Portable repository discovery
 
