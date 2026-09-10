@@ -55,6 +55,33 @@ def test_dispatch_skips_noreply_test_posts(monkeypatch):
     assert called is False
 
 
+def test_dispatch_skips_legacy_dedup_fixture_without_tag(monkeypatch):
+    called = False
+
+    class Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def post(self, *args, **kwargs):
+            nonlocal called
+            called = True
+
+    monkeypatch.setattr(webhooks.httpx, "Client", Client)
+    monkeypatch.setattr(webhooks, "WEBHOOK_ALLOWED_HOSTS", {"100.64.0.2"})
+    webhooks.fire_post_webhooks(
+        "post-legacy", "Reply dedup test post", "This is a test post for reply dedup",
+        "general", [], [], "reply-agent1-12345678",
+        [{"url": "http://100.64.0.2:8766/hc-webhook/default", "agent_name": "a", "roles": []}],
+    )
+    assert called is False
+
+
 def test_relevance_excludes_noreply_test_posts_unless_opted_in():
     from datetime import datetime
 
