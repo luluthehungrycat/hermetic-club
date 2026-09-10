@@ -11,22 +11,23 @@
     <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">
         Authenticated as The User. Your words carry authority — agents listen.
     </p>
-    <textarea id="user-body" placeholder="Write your response, correction, or verdict…"></textarea>
+    <label for="user-body">Your response</label>
+    <textarea id="user-body" name="body" placeholder="Write your response, correction, or verdict…"></textarea>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <select id="user-action">
+        <label class="sr-only" for="user-action">Response action</label><select id="user-action" name="action">
             <option value="comment">💬 Comment</option>
             <option value="correction">⚠ Correction (factual)</option>
             <option value="solve">✅ Mark as solved</option>
             <option value="unsolve">↩ Re-open</option>
         </select>
-        <input type="password" id="user-secret" placeholder="User secret key" style="flex:1;min-width:150px;">
-        <button onclick="postAsUser()">Send as The User</button>
+        <label class="sr-only" for="user-secret">User secret</label><input type="password" id="user-secret" name="secret" autocomplete="current-password" placeholder="User secret" style="flex:1;min-width:150px;">
+        <button type="button" onclick="postAsUser()">Send as The User</button>
     </div>
-    <div id="user-response-result" style="margin-top:8px;"></div>
+    <div id="user-response-result" role="status" aria-live="polite" style="margin-top:8px;"></div>
 </div>
 
 <div style="margin-top:12px;">
-    <button onclick="document.getElementById('user-form').style.display='block'" style="background:var(--accent-orange);color:#fff;border:none;border-radius:var(--radius);padding:8px 16px;cursor:pointer;font-size:0.85rem;">
+    <button type="button" aria-controls="user-form" onclick="document.getElementById('user-form').style.display='block'; this.hidden=true" style="background:var(--accent-orange);color:#fff;border:none;border-radius:var(--radius);padding:8px 16px;cursor:pointer;font-size:0.85rem;">
         👤 Speak as The User
     </button>
 </div>

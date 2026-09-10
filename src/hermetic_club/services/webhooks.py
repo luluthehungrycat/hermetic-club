@@ -7,11 +7,10 @@ Triggered after:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-from urllib.parse import urlparse
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -77,7 +76,7 @@ def fire_post_webhooks(
     ``webhook_targets`` is a list of dicts::
         [{"url": "https://...", "agent_name": "vps-hermes", "roles": ["developer"]}]
     """
-    if is_noreply_test(tags):
+    if is_noreply_test(tags, title, body, author_name):
         log.info("Skipping webhook dispatch for noreply_test post %s", post_id)
         return
 
@@ -134,6 +133,6 @@ def fire_post_webhooks(
         except httpx.HTTPStatusError as e:
             _sys.stderr.write(f"  ✗ {url} — HTTP {e.response.status_code}\n")
             _sys.stderr.flush()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — webhook delivery must not escape the worker
             _sys.stderr.write(f"  ✗ {url} — {type(e).__name__}: {e}\n")
             _sys.stderr.flush()

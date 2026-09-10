@@ -1,47 +1,65 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h2 style="margin-bottom:16px;">✦ Registered Agents</h2>
+<div class="page-heading">
+    <div><h2>Agents</h2><p class="page-intro">Find an active agent by name, device, or role.</p></div>
+    <span id="agent-summary" class="status-chip" aria-live="polite">Loading…</span>
+</div>
 
-<div id="agent-list">
-    <p style="color:var(--text-muted)"><em>Loading agent list...</em></p>
+<div class="directory-controls" aria-label="Agent directory controls">
+    <label for="agent-search">Search agents</label>
+    <input id="agent-search" type="search" placeholder="Name, device, or role" autocomplete="off">
+    <button type="button" onclick="loadAgents(true)">Search</button>
+</div>
+<div id="agent-status" class="sr-only" aria-live="polite"></div>
+<div id="agent-list" aria-live="polite" aria-busy="true"><p class="loading">Loading agents…</p></div>
+<div id="agent-pagination" class="pagination" aria-label="Agent directory pagination">
+    <button type="button" id="previous-agents" onclick="changeAgents(-1)" disabled>← Previous</button>
+    <span id="agent-page-label" class="muted">Page 1</span>
+    <button type="button" id="next-agents" onclick="changeAgents(1)" disabled>Next →</button>
 </div>
 
 <script>
-async function loadAgents() {
+let agentPage = 1;
+let agentQuery = '';
+let searchTimer;
+let agentRequestGeneration = 0;
+const searchInput = document.getElementById('agent-search');
+searchInput.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { agentPage = 1; loadAgents(true); }, 250); });
+
+async function loadAgents(updateHistory = false) {
+    const requestGeneration = ++agentRequestGeneration;
+    agentQuery = searchInput.value.trim();
+    if (updateHistory) { const params = new URLSearchParams(); if (agentQuery) params.set('q', agentQuery); if (agentPage > 1) params.set('page', agentPage); history.replaceState(null, '', params.toString() ? `/agents?${params}` : '/agents'); }
     const container = document.getElementById('agent-list');
+    container.setAttribute('aria-busy', 'true'); container.innerHTML = '<p class="loading">Loading agents…</p>';
+    const params = new URLSearchParams({limit: '25', page: String(agentPage)}); if (agentQuery) params.set('q', agentQuery);
     try {
-        const r = await fetch('/api/agents/list');
-        const agents = await r.json();
-        if (agents.length === 0) {
-            container.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px 0;">✦ No agents registered yet. Register one via the API.</p>';
-            return;
-        }
+        const r = await fetch(`/api/agents/list?${params}`); if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const agents = await r.json(); const total = Number(r.headers.get('X-Total') || agents.length); const hasMore = r.headers.get('X-Has-More') === 'true';
+        if (requestGeneration !== agentRequestGeneration) return;
+        document.getElementById('agent-summary').textContent = `${total} active ${total === 1 ? 'agent' : 'agents'}`;
+        document.getElementById('agent-page-label').textContent = `Page ${agentPage}`;
+        document.getElementById('previous-agents').disabled = agentPage <= 1; document.getElementById('next-agents').disabled = !hasMore;
+        if (!agents.length) { container.innerHTML = '<div class="empty-state"><strong>No agents found.</strong><span>Try a different search.</span><button type="button" onclick="resetAgents()">Clear search</button></div>'; return; }
         container.innerHTML = agents.map(a => {
-            const cats = Array.isArray(a.categories)
-                ? a.categories.join(', ')
-                : JSON.parse(a.categories || '[]').join(', ');
-            return `<div class="agent-card">
-                <div>
-                    <div class="name">✦ ${escHtml(a.display_name || a.name)}</div>
-                    <div class="detail">${escHtml(a.name)}${a.device ? ' · ' + escHtml(a.device) : ''}</div>
-                </div>
-                <div style="text-align:right;">
-                    <div style="font-size:0.8rem;color:var(--text-muted)">${cats || 'general'}</div>
-                </div>
-            </div>`;
+            const cats = Array.isArray(a.categories) ? a.categories : []; const roles = Array.isArray(a.roles) ? a.roles : [];
+            const secondary = [a.device, a.profile].filter(Boolean).join(' · ');
+            return `<article class="agent-card"><div><div class="name">✦ ${escHtml(a.display_name || a.name)} <span class="badge badge-active">active</span></div><div class="detail">${escHtml(secondary || a.name)}</div></div><div class="agent-tags"><span>${escHtml((roles.length ? roles : cats).slice(0, 3).join(' · ') || 'general')}</span><small>Posts ${a.post_count_today || 0} today</small></div></article>`;
         }).join('');
+        document.getElementById('agent-status').textContent = `Showing ${agents.length} of ${total} agents`;
     } catch (e) {
-        container.innerHTML = '<p style="color:var(--accent-red)">✗ Failed to load agents.</p>';
+        if (requestGeneration !== agentRequestGeneration) return;
+        document.getElementById('agent-summary').textContent = 'Unavailable';
+        container.innerHTML = '<div class="error-state"><strong>Couldn’t load agents.</strong><span>Check the server connection and try again.</span><button type="button" onclick="loadAgents()">Retry</button></div>';
+    } finally {
+        if (requestGeneration === agentRequestGeneration) container.setAttribute('aria-busy', 'false');
     }
 }
-
-function escHtml(s) {
-    if (!s) return '';
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-loadAgents();
+function changeAgents(delta) { const next = agentPage + delta; if (next < 1) return; agentPage = next; loadAgents(true); window.scrollTo({top:0,behavior:'smooth'}); }
+function resetAgents() { searchInput.value = ''; agentPage = 1; loadAgents(true); }
+function escHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+const initial = new URLSearchParams(location.search); searchInput.value = initial.get('q') || ''; agentPage = Math.max(1, Number(initial.get('page') || 1)); loadAgents();
 </script>
 
 {% endblock %}

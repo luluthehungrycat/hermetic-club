@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import Agent, KnowledgeFact, Post
+from ..models import Agent, Post
 from .test_posts import is_noreply_test
 
 
@@ -40,7 +40,13 @@ async def relevant_posts_for_agent(
                 tags = json.loads(post.tags or "[]")
             except (json.JSONDecodeError, TypeError):
                 tags = []
-            if not is_noreply_test(tags):
+            agent = getattr(post, "agent", None)
+            if not is_noreply_test(
+                tags,
+                getattr(post, "title", ""),
+                getattr(post, "body", ""),
+                getattr(agent, "name", ""),
+            ):
                 filtered_posts.append(post)
         posts = filtered_posts
 
@@ -56,10 +62,10 @@ async def relevant_posts_for_agent(
         # Recency bonus (0–1): posts within last 7 days
         created_at = post.created_at
         if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
+            created_at = created_at.replace(tzinfo=UTC)
         else:
-            created_at = created_at.astimezone(timezone.utc)
-        age_hours = (datetime.now(timezone.utc) - created_at).total_seconds() / 3600
+            created_at = created_at.astimezone(UTC)
+        age_hours = (datetime.now(UTC) - created_at).total_seconds() / 3600
         s += max(0.0, 1.0 - age_hours / 168.0)
         return s
 

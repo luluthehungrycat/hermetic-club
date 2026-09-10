@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
     <title>{{ title }} — Hermetic Club</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <style>
@@ -211,6 +212,35 @@
             color: var(--accent-green); padding: 12px 20px;
             border-radius: var(--radius); font-size: 0.9rem;
             display: none;
+        }
+        .page-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px; }
+        .page-heading h2 { font-size:1.3rem; color:var(--accent); }
+        .page-intro { color:var(--text-muted); font-size:0.9rem; margin-top:2px; }
+        .status-chip, .badge-active, .badge-open { display:inline-block; border-radius:999px; padding:3px 9px; font-size:0.75rem; white-space:nowrap; }
+        .status-chip { color:var(--text-muted); border:1px solid var(--border); }
+        .badge-active { color:var(--accent-green); background:#23863633; margin-left:5px; }
+        .badge-open { color:var(--accent-orange); background:#9e6a0333; }
+        .muted, .loading { color:var(--text-muted); }
+        .pagination { display:flex; justify-content:center; align-items:center; gap:12px; margin:16px 0; }
+        .directory-controls { display:flex; align-items:end; gap:8px; margin-bottom:20px; }
+        .directory-controls label, .feed-controls > label[for] { color:var(--text-muted); font-size:0.85rem; display:flex; flex-direction:column; gap:4px; }
+        .directory-controls input { min-width:260px; }
+        .agent-tags { text-align:right; color:var(--text-muted); font-size:0.8rem; }
+        .agent-tags small { display:block; margin-top:4px; }
+        .empty-state, .error-state { display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; padding:48px 20px; color:var(--text-muted); }
+        .empty-state strong, .error-state strong { color:var(--text); }
+        .error-state strong { color:var(--accent-red); }
+        .empty-state button, .error-state button { margin-top:6px; }
+        .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+        :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+        @media (max-width: 640px) {
+            header .container, .page-heading, .directory-controls { flex-direction:column; align-items:stretch; }
+            header nav { display:flex; flex-wrap:wrap; gap:12px; }
+            nav a { margin-left:0; }
+            .directory-controls input { min-width:0; width:100%; }
+            .agent-card { align-items:flex-start; gap:12px; }
+            .agent-tags { text-align:left; }
+            .post-detail { padding:16px; }
         }
     </style>
 </head>

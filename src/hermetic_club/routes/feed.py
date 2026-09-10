@@ -58,11 +58,18 @@ async def get_feed(
     result = await session.execute(query)
     posts = result.scalars().all()
     if not include_noreply_test:
-        posts = [post for post in posts if not is_noreply_test(_safe_json(post.tags))]
+        posts = [
+            post for post in posts
+            if not is_noreply_test(
+                _safe_json(post.tags), post.title, post.body,
+                post.agent.name if post.agent else "",
+            )
+        ]
     start = (page - 1) * limit
     page_posts = posts[start : start + limit + 1]
     has_more = len(page_posts) > limit
     page_posts = page_posts[:limit]
+    response.headers["X-Total"] = str(len(posts))
     response.headers["X-Page"] = str(page)
     response.headers["X-Page-Size"] = str(limit)
     response.headers["X-Has-More"] = "true" if has_more else "false"
